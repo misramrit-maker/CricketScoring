@@ -395,7 +395,7 @@ let DB=null,pendingOps=[],chain=Promise.resolve();
 function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'base'});}
 const HISTKEY='cricketscorer.hist.v1',SYNCKEY='cricketscorer.sync.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
-const SYNC_URL='https://script.google.com/macros/s/AKfycbzNB4aZcMaQ_aiJO65taiirTYY6KX-NXDL7TvWYuwh_DJx0-w6-TFF8d20UUZiF3Kfp/exec';
+const SYNC_URL='https://script.google.com/macros/s/AKfycbwHieBKxKFlD-On-OKeTHttJk89VXXCsH88ORDOwahaObU9KTidueSbgpczQoJpf15p/exec';
 let HIST=[];const SYNC={url:SYNC_URL,status:'',sheet:'',state:'idle',last:null,hide:null};
 function persistHist(){try{localStorage.setItem(HISTKEY,JSON.stringify(HIST));}catch(e){}}
 function loadHist(){try{const h=JSON.parse(localStorage.getItem(HISTKEY)||'null');if(Array.isArray(h)) HIST=h;}catch(e){}
@@ -457,6 +457,13 @@ async function initDb(){
   };
   sub('players',docs=>{LIB.players=docs.map(d=>({id:d.id,name:String((d.data()||{}).name||'')})).filter(p=>p.name);});
   sub('teams',docs=>{LIB.teams=docs.map(d=>{const x=d.data()||{};return {id:d.id,name:String(x.name||''),playerIds:Array.isArray(x.playerIds)?x.playerIds:[],capId:typeof x.capId==='string'?x.capId:'',wkId:typeof x.wkId==='string'?x.wkId:''};}).filter(t=>t.name);});
+  {let liveFirst=true;
+   db.collection('live').onSnapshot(snap=>{
+     if(snap.empty&&snap.metadata.fromCache&&!snap.metadata.hasPendingWrites) return;
+     const d=snap.docs.find(x=>x.id==='current');
+     const first=liveFirst;liveFirst=false;
+     try{liveApply(d?(d.data()||{}):null,first);}catch(e){}
+   },()=>{});}
   sub('matches',docs=>{HIST=docs.map(d=>Object.assign({},d.data()||{},{id:d.id})).filter(r=>r.t1);HIST.sort((a,b)=>String(b.at).localeCompare(String(a.at)));persistHist();});
   libChanged();
 }
@@ -589,7 +596,51 @@ let M=null;
 function freshSetup(){return {fmt:'T20',overs:'20',maxper:'',tossMode:'flip',caller:'0',call:'heads',coin:{state:'idle',result:''},winner:'',choice:'',slots:[{teamId:'',name:'',sel:[],newp:'',cap:'',wk:''},{teamId:'',name:'',sel:[],newp:'',cap:'',wk:''}]};}
 function freshUi(){return {mode:'n',wk:null,tab:'score',view:0,armed:null,copyText:null,screen:'setup',setup:freshSetup(),squads:{newp:'',editor:{teamId:'',name:'',sel:[],newp:''}},focus:null,top:false,chg:false,sub:null,menu:false,hist:null};}
 let ui=freshUi();
-function save(){if(!M)return;syncSoon();try{localStorage.setItem(KEY,JSON.stringify(M));}catch(e){}}
+function save(){if(!M)return;syncSoon();try{localStorage.setItem(KEY,JSON.stringify(M));}catch(e){}livePush();}
+
+/* ---------- live match shared between devices ----------
+   The match in progress is kept in one shared record. Every device writes to it after each change and
+   follows it when another device changes it. If two devices score at the same instant the later write wins. */
+const DEVICE=newId('d');
+let REV=0,liveT=null,liveBusy=0;
+function liveDirty(){return liveT!==null||liveBusy>0;}
+function liveWrite(build){
+  if(LIB.mode==='local') return;
+  liveBusy++;
+  remote(db=>{
+    const p=build();
+    return (p?db.doc('live/current').set(p):Promise.resolve()).then(()=>{liveBusy=Math.max(0,liveBusy-1);},e=>{liveBusy=Math.max(0,liveBusy-1);throw e;});
+  });
+}
+function livePush(){
+  if(LIB.mode==='local') return;
+  clearTimeout(liveT);
+  liveT=setTimeout(()=>{liveT=null;liveWrite(()=>{if(!M) return null;REV++;return {json:JSON.stringify(M),rev:REV,by:DEVICE,at:new Date().toISOString()};});},150);
+}
+function liveClear(){
+  clearTimeout(liveT);liveT=null;
+  liveWrite(()=>{REV++;return {cleared:true,rev:REV,by:DEVICE,at:new Date().toISOString()};});
+}
+function liveApply(x,first){
+  if(x&&x.by===DEVICE) return;
+  if(liveDirty()) return;
+  if(!x){if(M) livePush();return;}
+  if(x.cleared){
+    if(typeof x.rev==='number'&&x.rev>REV) REV=x.rev;
+    if(M){M=null;clearSaved();ui=freshUi();ui.top=true;if(!first) toast('The match was ended on another device');render();}
+    return;
+  }
+  let m=null;try{m=JSON.parse(x.json);}catch(e){}
+  if(!m||m.v!==1||!m.innings||!m.teams) return;
+  const had=!!M,prevCur=M?M.cur:-1;
+  M=m;if(typeof x.rev==='number'&&x.rev>REV) REV=x.rev;
+  if(first){try{if(matchOutcome(M,analyse())){M=null;clearSaved();if(had) render();return;}}catch(e){}}
+  try{localStorage.setItem(KEY,JSON.stringify(M));}catch(e){}
+  if(!had){ui=freshUi();ui.view=M.cur;ui.top=true;}
+  else if(M.cur!==prevCur){ui.view=M.cur;ui.wk=null;ui.sub=null;ui.chg=false;}
+  else ui.view=Math.min(ui.view,M.cur);
+  render();
+}
 function load(){try{const s=localStorage.getItem(KEY);if(s){const m=JSON.parse(s);if(m&&m.v===1&&m.innings&&m.teams) return m;}}catch(e){}return null;}
 function clearSaved(){try{localStorage.removeItem(KEY);}catch(e){}}
 
@@ -714,7 +765,7 @@ function topNav(){
   return '<div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div><div class="tabs two" role="tablist">'+t+'</div>';
 }
 function storeNote(){
-  return '<p class="note">'+(LIB.mode==='db'?'Players and teams are saved with this app and kept between sessions.':LIB.mode==='loading'?'Connecting to your saved players...':'Players and teams are saved in this browser only.')+'</p>';
+  return '<p class="note">'+(LIB.mode==='db'?'Players, teams and the live match are shared with every device that opens this page, and kept between sessions.':LIB.mode==='loading'?'Connecting to your saved players...':'Players and teams are saved in this browser only.')+'</p>';
 }
 function tn(i){return normName(ui.setup.slots[i].name)||('Team '+'AB'[i]);}
 function tnSpan(i){return '<span data-tn="'+i+'">'+esc(tn(i))+'</span>';}
@@ -1271,7 +1322,7 @@ function act(a,d){
     case 'end-arm':ui.armed='end';break;
     case 'end-confirm':inn.declared=true;break;
     case 'new-arm':ui.armed='new';break;
-    case 'new-confirm':if(!M.recKey&&M.innings.some(x=>x.events.length)) histRecord(true);clearSaved();M=null;ui=freshUi();ui.top=true;render();return;
+    case 'new-confirm':if(!M.recKey&&M.innings.some(x=>x.events.length)) histRecord(true);clearSaved();M=null;liveClear();ui=freshUi();ui.top=true;render();return;
     case 'copy':{
       const text=summaryText(analyse());
       const fallback=()=>{ui.copyText=text;render();};
