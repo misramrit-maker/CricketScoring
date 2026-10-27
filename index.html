@@ -395,7 +395,7 @@ let DB=null,pendingOps=[],chain=Promise.resolve();
 function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'base'});}
 const HISTKEY='cricketscorer.hist.v1',SYNCKEY='cricketscorer.sync.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
-const SYNC_URL='https://script.google.com/macros/s/AKfycbwHieBKxKFlD-On-OKeTHttJk89VXXCsH88ORDOwahaObU9KTidueSbgpczQoJpf15p/exec';
+const SYNC_URL='https://script.google.com/macros/s/AKfycbxbU--Zw83XG9ZUkr9Y80nExzbGiGdSojvhUzebBhY931duRGOQOrgOwCffYwholB3T/exec';
 let HIST=[];const SYNC={url:SYNC_URL,status:'',sheet:'',state:'idle',last:null,hide:null};
 function persistHist(){try{localStorage.setItem(HISTKEY,JSON.stringify(HIST));}catch(e){}}
 function loadHist(){try{const h=JSON.parse(localStorage.getItem(HISTKEY)||'null');if(Array.isArray(h)) HIST=h;}catch(e){}
@@ -474,7 +474,7 @@ function histRecord(final){
   const A=analyse(),r=matchOutcome(M,A);
   if(!M.recId){M.recId=newId('m');M.recAt=new Date().toISOString();}
   const scores=A.map((S,i)=>M.teams[M.innings[i].bat].name+' '+S.runs+'/'+S.wkts+' ('+fmtOvers(S.balls)+' ov)');
-  const rec={id:M.recId,at:M.recAt,t1:M.teams[0].name,t2:M.teams[1].name,format:M.format||'Custom',overs:M.overs||'',toss:tossText(),scores:scores,result:r?r.text:(final?'Not completed':''),summary:summaryText(A)};
+  const rec={id:M.recId,at:M.recAt,t1:M.teams[0].name,t2:M.teams[1].name,format:M.format||'Custom',overs:M.overs||'',toss:tossText(),scores:scores,result:r?r.text:(final?'Not completed':''),summary:summaryText(A),card:JSON.stringify(A.map((S,i)=>cardData(A,i)))};
   const i=HIST.findIndex(x=>x.id===rec.id);
   if(i>=0) HIST[i]=rec;else HIST.push(rec);
   HIST.sort((a,b)=>String(b.at).localeCompare(String(a.at)));persistHist();
@@ -551,7 +551,22 @@ function menuHtml(){
   return '<div class="menuwrap"><button class="dots" data-act="menu" aria-label="Menu" aria-haspopup="true" aria-expanded="'+ui.menu+'"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="19" r="2" fill="currentColor"/></svg></button>'+
     (ui.menu?'<div class="menu" role="menu"><button role="menuitem" data-act="hist-open">Match history</button></div>':'')+'</div>';
 }
+function histCardHtml(){
+  const r=HIST.find(x=>x.id===ui.histId);
+  const head='<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div>'+
+    '<div class="actions" style="margin-top:0"><button class="btn small" data-act="hist-back">&larr; Match history</button></div>';
+  if(!r) return head+'<section class="panel pad"><p class="muted">That match is no longer saved.</p></section></div>';
+  let d='';try{d=new Date(r.at).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'});}catch(e){}
+  let cards=[];try{cards=JSON.parse(r.card||'[]')||[];}catch(e){}
+  const have=cards.map((c,i)=>c?i:-1).filter(i=>i>=0);
+  const vi=have.indexOf(ui.histInn)>=0?ui.histInn:(have[0]!=null?have[0]:0);
+  const toggle=have.length>1?'<div class="seg">'+have.map(i=>'<button class="opt" data-act="hist-inn" data-v="'+i+'" aria-pressed="'+(vi===i)+'">'+innName(i)+': '+esc(cards[i].bat)+'</button>').join('')+'</div>':'';
+  const body=have.length?cardPanels(cards[vi]):'<section class="panel pad"><p class="muted">The detailed scorecard was not saved for this match, because it was played before scorecards were stored. This is the summary that was saved.</p><pre style="white-space:pre-wrap;font-family:var(--font-data);font-size:13px;margin:8px 0 0">'+esc(r.summary||'')+'</pre></section>';
+  return head+'<section class="panel pad"><h1>'+esc(r.t1)+' v '+esc(r.t2)+'</h1><div class="when muted">'+esc(d)+' &middot; '+esc(r.format)+(r.overs?' &middot; '+esc(r.overs)+' ov':'')+'</div>'+
+    '<p class="big" style="margin-top:8px">'+esc(r.result||'In progress')+'</p>'+(r.scores||[]).map(x=>'<div class="sc" style="font-family:var(--font-data);font-size:13px">'+esc(x)+'</div>').join('')+'<p class="note">'+esc(r.toss)+'</p></section>'+toggle+body+'</div>';
+}
 function histHtml(){
+  if(ui.hist==='card') return histCardHtml();
   const items=HIST.length?HIST.map(r=>{
     let d='';try{d=new Date(r.at).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'});}catch(e){}
     const armed=ui.armed==='h:'+r.id;
@@ -560,7 +575,7 @@ function histHtml(){
       '<div>'+esc(r.result||'In progress')+'</div>'+
       (r.scores||[]).map(x=>'<div class="sc">'+esc(x)+'</div>').join('')+
       '<div class="note">'+esc(r.toss)+'</div>'+
-      '<div class="actions" style="margin-top:6px"><button class="btn small'+(armed?' armed':' danger')+'" data-act="'+(armed?'hist-del':'hist-del-arm')+'" data-id="'+esc(r.id)+'">'+(armed?'Tap again to delete':'Delete')+'</button></div></div>';
+      '<div class="actions" style="margin-top:6px"><button class="btn small primary" data-act="hist-view" data-id="'+esc(r.id)+'">Full scorecard</button><button class="btn small'+(armed?' armed':' danger')+'" data-act="'+(armed?'hist-del':'hist-del-arm')+'" data-id="'+esc(r.id)+'">'+(armed?'Tap again to delete':'Delete')+'</button></div></div>';
   }).join(''):'<p class="muted">No matches yet. A match is saved here as soon as it has a result.</p>';
   return '<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div>'+
     '<div class="actions" style="margin-top:0"><button class="btn small" data-act="hist-close">&larr; Back</button></div>'+
@@ -579,6 +594,9 @@ function histAct(a,d){
     case 'menu':ui.menu=!ui.menu;break;
     case 'hist-open':ui.hist='list';ui.top=!d.v;if(d.v==='sync')ui.top=false;break;
     case 'hist-close':ui.hist=null;ui.top=true;break;
+    case 'hist-view':ui.hist='card';ui.histId=d.id;ui.histInn=0;ui.top=true;break;
+    case 'hist-back':ui.hist='list';ui.top=true;break;
+    case 'hist-inn':ui.histInn=+d.v;break;
     case 'hist-del-arm':ui.armed='h:'+d.id;break;
     case 'hist-del':{const id=d.id;HIST=HIST.filter(x=>x.id!==id);persistHist();ui.armed=null;remote(db=>db.doc('matches/'+id).delete());break;}
     case 'sync-all':syncPush(true);return true;
@@ -671,9 +689,15 @@ function howText(inn,b){
   }
   return b.how;
 }
-function logo(){return '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="var(--wicket)"/><path d="M5 7c4 2.5 4 7.5 0 10M19 7c-4 2.5-4 7.5 0 10" fill="none" stroke="var(--wicket-ink)" stroke-width="1.4" stroke-linecap="round" stroke-dasharray="1.6 2.2"/></svg>';}
+function logo(){return '<svg width="42" height="25" viewBox="0 0 44 26" aria-hidden="true">'+
+  '<g transform="translate(11 13) rotate(35)"><rect x="-1.4" y="-12" width="2.8" height="8" rx="1.2" fill="#2B2118"/><rect x="-1.4" y="-9.2" width="2.8" height="0.9" fill="#5A4636"/><rect x="-1.4" y="-7.2" width="2.8" height="0.9" fill="#5A4636"/><rect x="-3.7" y="-5" width="7.4" height="16.5" rx="1.9" fill="#E2B880" stroke="#8A5A1E" stroke-width="1"/><line x1="0" y1="-4" x2="0" y2="10" stroke="#B98A4E" stroke-width=".8"/></g>'+
+  '<circle cx="33" cy="13" r="9.5" fill="var(--wicket)" stroke="#7E1712" stroke-width="1"/>'+
+  '<path d="M24.6 13 Q33 11 41.4 13" fill="none" stroke="#F3E9D8" stroke-width="3.2" stroke-dasharray=".8 1.4"/>'+
+  '<path d="M24.2 10.6 Q33 8.6 41.8 10.6" fill="none" stroke="#F3E9D8" stroke-width=".9" stroke-linecap="round"/>'+
+  '<path d="M24.2 15.4 Q33 13.4 41.8 15.4" fill="none" stroke="#F3E9D8" stroke-width=".9" stroke-linecap="round"/></svg>';}
 
 /* ---------- squad picker (used in match setup and in Players & teams) ---------- */
+function maxSel(k){return k==='e'?52:16;}
 function pk(k){return k==='e'?ui.squads.editor:ui.setup.slots[+k];}
 function otherSel(k){return (k==='0'||k==='1')?ui.setup.slots[1-(+k)].sel:[];}
 function pickerHtml(k){
@@ -688,15 +712,15 @@ function pickerHtml(k){
   return '<label class="field" style="margin-top:0"><span>Saved teams</span><select id="ts-'+k+'" data-k="'+k+'" data-f="team">'+teamOpts+'</select></label>'+
     '<label class="field"><span>Team name</span><input id="tn-'+k+'" data-k="'+k+'" data-f="name" value="'+esc(p.name)+'" maxlength="40" autocomplete="off" placeholder="Team name"></label>'+
     '<div class="field"><span>Squad</span>'+
-      (LIB.players.length?'<button class="btn pickrow" data-act="pick-open" data-k="'+k+'" aria-haspopup="dialog"><span>Select players</span><span class="pickcount">'+p.sel.length+' of 16 selected <i class="chev" aria-hidden="true">&rsaquo;</i></span></button>':'<div class="note">No saved players yet. Add your first player below.</div>')+
+      (LIB.players.length?'<button class="btn pickrow" data-act="pick-open" data-k="'+k+'" aria-haspopup="dialog"><span>Select players</span><span class="pickcount">'+p.sel.length+' of '+maxSel(k)+' selected <i class="chev" aria-hidden="true">&rsaquo;</i></span></button>':'<div class="note">No saved players yet. Add your first player below.</div>')+
     '</div>'+
     (p.sel.length?'<div class="field"><span>Batting order</span><ol class="order">'+p.sel.map((id,i)=>
-      (i===0?'<li class="divider">Playing XI</li>':'')+(i===11?'<li class="divider">Substitutes</li>':'')+
+      (k!=='e'&&i===0?'<li class="divider">Playing XI</li>':'')+(k!=='e'&&i===11?'<li class="divider">Substitutes</li>':'')+
       '<li><span class="pos">'+(i+1)+'</span><input class="nmi" id="on-'+k+'-'+esc(id)+'" data-f="rename" data-id="'+esc(id)+'" value="'+esc(libName(id))+'" maxlength="40" aria-label="Player name" autocomplete="off">'+
       '<button class="btn small" data-act="move" data-k="'+k+'" data-i="'+i+'" data-d="-1" aria-label="Move up"'+(i===0?' disabled':'')+'>&#9650;</button>'+
       '<button class="btn small" data-act="move" data-k="'+k+'" data-i="'+i+'" data-d="1" aria-label="Move down"'+(i===p.sel.length-1?' disabled':'')+'>&#9660;</button>'+
       '<button class="btn small danger" data-act="unpick" data-k="'+k+'" data-id="'+esc(id)+'" aria-label="Remove '+esc(libName(id))+' from this team">&times;</button></li>').join('')+
-      '</ol><p class="note">Pick up to 16 players. The first 11 play and the rest are substitutes. Batters go in at the fall of a wicket in this order, and you can pick someone else at that moment. Tap a name to rename a player. The cross removes them from this team and keeps them saved.</p></div>':'')+
+      '</ol><p class="note">'+(k==='e'?'The full squad can have up to 52 players. When you pick a team for a match you choose up to 16 of them.':'Pick up to 16 players for this match. The first 11 play and the rest are substitutes. Batters go in at the fall of a wicket in this order, and you can pick someone else at that moment.')+' Tap a name to rename a player. The cross removes them from this team and keeps them saved.</p></div>':'')+
     (p.sel.length?'<div class="grid2">'+roleSel('cap','Captain',p.cap||'')+roleSel('wkp','Wicketkeeper',p.wk||'')+'</div><p class="note">Caught behind goes straight to the wicketkeeper, so you do not pick a fielder for it.</p>':'')+
     '<div class="addrow"><input id="np-'+k+'" data-k="'+k+'" data-f="newp" value="'+esc(p.newp)+'" maxlength="40" autocomplete="off" placeholder="Add a player not on the list" aria-label="New player name"><button class="btn small primary" data-act="add-player" data-k="'+k+'">Add &amp; select</button></div>';
 }
@@ -710,7 +734,7 @@ function pickListHtml(k){
 function pickModal(){
   const k=ui.pickK,p=pk(k);
   return '<div class="scrim" data-act="pick-close-bg"><div class="sheet" role="dialog" aria-modal="true" aria-label="Select players">'+
-    '<h2>Select players</h2><p class="muted" style="margin:0"><b id="pcount">'+p.sel.length+' of 16 selected</b>. Tap a name to add or remove them. The first 11 play and the rest are substitutes. The number is the batting order.</p>'+
+    '<h2>Select players</h2><p class="muted" style="margin:0"><b id="pcount">'+p.sel.length+' of '+maxSel(k)+' selected</b>. Tap a name to add or remove them. '+(k==='e'?'The number is the order in the squad.':'The first 11 play and the rest are substitutes. The number is the batting order.')+'</p>'+
     '<div class="plist" id="plist" style="margin-top:12px">'+(LIB.players.length?pickListHtml(k):'<div class="empty">No saved players yet.</div>')+'</div>'+
     '<div class="actions" style="margin-top:18px"><button class="btn primary" data-act="pick-close">Done</button></div></div></div>';
 }
@@ -720,7 +744,8 @@ function pickTeam(k,id){
   if(!t){p.teamId='';p.name='';p.sel=[];p.cap='';p.wk='';return;}
   const other=otherSel(k);
   p.teamId=t.id;p.name=t.name;
-  p.sel=t.playerIds.filter(i=>libName(i)!=null&&other.indexOf(i)<0).slice(0,16);
+  p.sel=t.playerIds.filter(i=>libName(i)!=null&&other.indexOf(i)<0).slice(0,maxSel(k));
+  if(k!=='e'&&t.playerIds.filter(i=>libName(i)!=null&&other.indexOf(i)<0).length>16) toast('This match takes 16 players, so I picked the first 16. Change them with Select players.');
   p.cap=p.sel.indexOf(t.capId)>=0?t.capId:'';
   p.wk=p.sel.indexOf(t.wkId)>=0?t.wkId:'';
 }
@@ -735,7 +760,7 @@ function addPlayerTo(k){
     const p=pk(k);
     if(otherSel(k).indexOf(id)>=0){toast(name+' is already in the other team');holder.newp='';}
     else{
-      if(p.sel.indexOf(id)<0){if(p.sel.length>=16) toast('A squad can have up to 16 players. '+name+' is saved but not selected.');else p.sel.push(id);}
+      if(p.sel.indexOf(id)<0){if(p.sel.length>=maxSel(k)) toast('A squad can have up to '+maxSel(k)+' players. '+name+' is saved but not selected.');else p.sel.push(id);}
       holder.newp='';if(ex&&p.sel.indexOf(id)>=0) toast(name+' was already saved, so I selected them');
     }
     ui.focus='np-'+k;
@@ -753,7 +778,13 @@ function saveTeam(k,quiet){
   let ex=p.teamId?LIB.teams.find(t=>t.id===p.teamId):null;
   if(!ex) ex=LIB.teams.find(t=>t.name.toLowerCase()===name.toLowerCase());
   const id=ex?ex.id:newId('t');
-  libPutTeam(id,name,ids,ids.indexOf(p.cap)>=0?p.cap:'',ids.indexOf(p.wk)>=0?p.wk:'');
+  if(ex&&k!=='e'){
+    /* Starting a match picks up to 16 from the saved squad, so keep the whole saved squad and only add anyone new. */
+    const full=ex.playerIds.filter(i=>libName(i)!=null);
+    ids.forEach(i=>{if(full.indexOf(i)<0&&full.length<52) full.push(i);});
+    const cp=ids.indexOf(p.cap)>=0?p.cap:(full.indexOf(ex.capId)>=0?ex.capId:''),wp=ids.indexOf(p.wk)>=0?p.wk:(full.indexOf(ex.wkId)>=0?ex.wkId:'');
+    libPutTeam(id,name,full,cp,wp);
+  }else libPutTeam(id,name,ids,ids.indexOf(p.cap)>=0?p.cap:'',ids.indexOf(p.wk)>=0?p.wk:'');
   p.teamId=id;p.name=name;
   if(!quiet) toast('Team saved');
   return id;
@@ -886,10 +917,10 @@ function actLib(a,d){
       const p=pk(d.k),i=p.sel.indexOf(d.id);
       if(i>=0) p.sel.splice(i,1);
       else if(otherSel(d.k).indexOf(d.id)>=0) return false;
-      else if(p.sel.length>=16){toast('A squad can have up to 16 players');return false;}
+      else if(p.sel.length>=maxSel(d.k)){toast('Up to '+maxSel(d.k)+' players can be selected here');return false;}
       else p.sel.push(d.id);
       const pl=$('plist');if(pl) pl.innerHTML=pickListHtml(d.k);
-      const pc=$('pcount');if(pc) pc.textContent=p.sel.length+' of 16 selected';
+      const pc=$('pcount');if(pc) pc.textContent=p.sel.length+' of '+maxSel(d.k)+' selected';
       return false;}
     case 'save-team':saveTeam(d.k,false);return true;
     case 'clear-editor':ui.squads.editor={teamId:'',name:'',sel:[],newp:''};ui.focus='tn-e';return true;
@@ -1163,28 +1194,42 @@ function viewToggle(A){
   if(A.length<2) return '';
   return '<div class="seg">'+A.map((s,i)=>'<button class="opt" data-act="view" data-v="'+i+'" aria-pressed="'+(ui.view===i)+'">'+innName(i)+': '+esc(M.teams[M.innings[i].bat].name)+'</button>').join('')+'</div>';
 }
-function cardTab(A){
-  const vi=Math.min(ui.view,A.length-1),S=A[vi],inn=M.innings[vi];
-  const bt=M.teams[inn.bat].players,bw=M.teams[inn.bowl].players;
-  if(!S.started) return viewToggle(A)+'<div class="panel pad"><p class="muted">This innings has not started.</p></div>';
-  const rows=S.order.map(i=>{const b=S.bat[i];
-    return '<tr><td><span class="name">'+esc(bt[i])+'</span><span class="sub">'+esc(howText(inn,b))+'</span></td><td class="n"><b>'+b.runs+'</b></td><td class="n">'+b.balls+'</td><td class="n">'+b.fours+'</td><td class="n">'+b.sixes+'</td><td class="n">'+sr(b)+'</td></tr>';}).join('');
-  const actv=activeOf(M,inn.bat);
-  const dnb=actv.filter(i=>!S.bat[i]).map(i=>esc(bt[i]));
-  const subsNB=bt.map((p,i)=>(!S.bat[i]&&actv.indexOf(i)<0)?esc(p):null).filter(Boolean);
-  const ex=S.extras,exT=ex.wd+ex.nb+ex.b+ex.lb;
-  const fow=S.fow.map(f=>f.w+'-'+f.score+' ('+esc(bt[f.idx])+', '+f.ov+' ov)').join(', ');
-  const brows=S.bowlOrder.map(i=>{const w=S.bowl[i];
-    return '<tr><td><span class="name">'+esc(bw[i])+'</span></td><td class="n">'+fmtOvers(w.balls)+'</td><td class="n">'+w.maidens+'</td><td class="n">'+w.runs+'</td><td class="n"><b>'+w.wkts+'</b></td><td class="n">'+w.wd+'</td><td class="n">'+w.nb+'</td><td class="n">'+econ(w)+'</td></tr>';}).join('');
-  return viewToggle(A)+
-    '<section class="panel"><h3>'+esc(M.teams[inn.bat].name)+' batting <em>'+S.runs+'/'+S.wkts+' ('+fmtOvers(S.balls)+' ov)</em></h3>'+
+function cardData(A,vi){
+  const S=A[vi],inn=M.innings[vi];
+  if(!S||!S.started) return null;
+  const bt=M.teams[inn.bat].players,bw=M.teams[inn.bowl].players,actv=activeOf(M,inn.bat);
+  return {bat:M.teams[inn.bat].name,bowl:M.teams[inn.bowl].name,runs:S.runs,wkts:S.wkts,balls:S.balls,
+    rows:S.order.map(i=>{const b=S.bat[i];return {n:bt[i],how:howText(inn,b),r:b.runs,b:b.balls,f:b.fours,s:b.sixes};}),
+    dnb:actv.filter(i=>!S.bat[i]).map(i=>bt[i]),
+    subs:bt.map((q,i)=>(!S.bat[i]&&actv.indexOf(i)<0)?q:null).filter(Boolean),
+    ex:S.extras,
+    fow:S.fow.map(f=>f.w+'-'+f.score+' ('+bt[f.idx]+', '+f.ov+' ov)'),
+    bowlers:S.bowlOrder.map(i=>{const w=S.bowl[i];return {n:bw[i],b:w.balls,m:w.maidens,r:w.runs,w:w.wkts,wd:w.wd,nb:w.nb};})};
+}
+/* One innings as batting and bowling tables. Used for the live scorecard and for saved matches in Match history. */
+function cardPanels(d){
+  const sr2=(r,b)=>b?(r*100/b).toFixed(1):'–';
+  const fours=d.rows.reduce((a,x)=>a+x.f,0),sixes=d.rows.reduce((a,x)=>a+x.s,0);
+  const rows=d.rows.map(b=>
+    '<tr><td><span class="name">'+esc(b.n)+'</span><span class="sub">'+esc(b.how)+'</span></td><td class="n"><b>'+b.r+'</b></td><td class="n">'+b.b+'</td><td class="n">'+b.f+'</td><td class="n">'+b.s+'</td><td class="n">'+sr2(b.r,b.b)+'</td></tr>').join('');
+  const ex=d.ex,exT=ex.wd+ex.nb+ex.b+ex.lb;
+  const brows=d.bowlers.map(w=>{
+    const ov=fmtOvers(w.b),ec=w.b?(w.r*6/w.b).toFixed(2):'–';
+    return '<tr><td><span class="name">'+esc(w.n)+'</span><span class="sub">'+ov+'-'+w.m+'-'+w.r+'-'+w.w+'</span></td><td class="n">'+ov+'</td><td class="n">'+w.m+'</td><td class="n">'+w.r+'</td><td class="n"><b>'+w.w+'</b></td><td class="n">'+w.wd+'</td><td class="n">'+w.nb+'</td><td class="n">'+ec+'</td></tr>';}).join('');
+  return '<section class="panel"><h3>'+esc(d.bat)+' batting <em>'+d.runs+'/'+d.wkts+' ('+fmtOvers(d.balls)+' ov)</em></h3>'+
     '<div class="tbl-wrap"><table><thead><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th><th>SR</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
-    (dnb.length?'<div class="line"><b>Did not bat</b> '+dnb.join(', ')+'</div>':'')+(subsNB.length?'<div class="line"><b>Substitutes</b> '+subsNB.join(', ')+'</div>':'')+
+    (d.dnb.length?'<div class="line"><b>Did not bat</b> '+d.dnb.map(esc).join(', ')+'</div>':'')+(d.subs.length?'<div class="line"><b>Substitutes</b> '+d.subs.map(esc).join(', ')+'</div>':'')+
     '<div class="line"><b>Extras '+exT+'</b> (b '+ex.b+', lb '+ex.lb+', wd '+ex.wd+', nb '+ex.nb+')</div>'+
-    '<div class="line"><b>Total '+S.runs+'/'+S.wkts+'</b> in '+fmtOvers(S.balls)+' overs, run rate '+rate(S.runs,S.balls).toFixed(2)+'</div>'+
-    (fow?'<div class="line"><b>Fall of wickets</b> '+fow+'</div>':'')+'</section>'+
-    '<section class="panel"><h3>'+esc(M.teams[inn.bowl].name)+' bowling</h3><div class="tbl-wrap"><table><thead><tr><th>Bowler</th><th>O</th><th>M</th><th>R</th><th>W</th><th>Wd</th><th>Nb</th><th>Econ</th></tr></thead><tbody>'+
+    '<div class="line"><b>Total '+d.runs+'/'+d.wkts+'</b> in '+fmtOvers(d.balls)+' overs, run rate '+rate(d.runs,d.balls).toFixed(2)+'</div>'+
+    '<div class="line"><b>Boundaries</b> '+plural(fours,'four')+', '+plural(sixes,'six')+' off the bat</div>'+
+    (d.fow.length?'<div class="line"><b>Fall of wickets</b> '+d.fow.map(esc).join(', ')+'</div>':'')+'</section>'+
+    '<section class="panel"><h3>'+esc(d.bowl)+' bowling <em>overs-maidens-runs-wickets</em></h3><div class="tbl-wrap"><table><thead><tr><th>Bowler</th><th>O</th><th>M</th><th>R</th><th>W</th><th>Wd</th><th>Nb</th><th>Econ</th></tr></thead><tbody>'+
     (brows||'<tr><td colspan="8" class="muted">No overs bowled yet</td></tr>')+'</tbody></table></div></section>';
+}
+function cardTab(A){
+  const vi=Math.min(ui.view,A.length-1),S=A[vi];
+  if(!S.started) return viewToggle(A)+'<div class="panel pad"><p class="muted">This innings has not started.</p></div>';
+  return viewToggle(A)+cardPanels(cardData(A,vi));
 }
 function oversTab(A){
   const vi=Math.min(ui.view,A.length-1),S=A[vi],inn=M.innings[vi];
@@ -1379,7 +1424,7 @@ document.addEventListener('change',e=>{
     else if(d.f==='cap'||d.f==='wkp'){const p=pk(d.k);if(d.f==='cap') p.cap=t.value;else p.wk=t.value;}
     else if(d.f==='tick'){
       const p=pk(d.k),i=p.sel.indexOf(d.id);
-      if(t.checked&&i<0&&otherSel(d.k).indexOf(d.id)<0){if(p.sel.length>=16) toast('A squad can have up to 16 players');else p.sel.push(d.id);}
+      if(t.checked&&i<0&&otherSel(d.k).indexOf(d.id)<0){if(p.sel.length>=maxSel(d.k)) toast('Up to '+maxSel(d.k)+' players can be selected here');else p.sel.push(d.id);}
       else if(!t.checked&&i>=0) p.sel.splice(i,1);
       render();
     }else if(d.f==='rename'){
