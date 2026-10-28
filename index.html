@@ -58,11 +58,11 @@ button{touch-action:manipulation}
 .dev{font-size:12px;font-weight:500;color:var(--muted);font-family:var(--font-body);letter-spacing:0;white-space:nowrap}
 .brandcol{display:flex;align-items:baseline;gap:10px;min-width:0;flex-wrap:wrap}
 .syncind{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;white-space:nowrap}
-.syncind.syncing{color:#8A6100}
-.syncind.done{color:#1B7A2E}
+.syncind.syncing{color:#B88700}
+.syncind.done{color:#1E8E34}
 .syncind.fail{color:var(--wicket)}
 .syncind .spin{width:14px;height:14px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:spin .8s linear infinite;flex:none}
-.syncind.done .spin,.syncind.fail .spin{animation:none;border-right-color:currentColor}
+.syncind.fail .spin{animation:none;border-right-color:currentColor}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.syncind .spin{animation-duration:2.4s}}
 .topr{display:flex;align-items:center;gap:6px;min-width:0}
@@ -215,16 +215,16 @@ h1{font-family:var(--font-display);font-size:34px;line-height:1.05;margin:0 0 6p
 .toast:empty{display:none}
 
 /* Toss */
-.batwrap{perspective:700px;display:grid;place-items:center;padding:14px 0 6px;min-height:190px}
-.batflip{width:74px;height:158px;position:relative;transform-style:preserve-3d}
+.batwrap{perspective:700px;display:grid;place-items:center;padding:18px 0 10px;min-height:150px}
+.batflip{width:158px;height:74px;position:relative;transform-style:preserve-3d}
 .batflip .face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden}
 .batflip .face svg{width:100%;height:100%;display:block;filter:drop-shadow(0 3px 3px rgba(10,38,37,.3))}
-.batflip .rivers{transform:rotateY(180deg)}
-.batflip.rest-tails{transform:rotateY(180deg)}
+.batflip .rivers{transform:rotateX(180deg)}
+.batflip.rest-tails{transform:rotateX(180deg)}
 .batflip.flip-heads{animation:flipH 1.5s cubic-bezier(.2,.7,.3,1) forwards}
 .batflip.flip-tails{animation:flipT 1.5s cubic-bezier(.2,.7,.3,1) forwards}
-@keyframes flipH{0%{transform:translateY(0) rotateY(0deg)}45%{transform:translateY(-44px) rotateY(900deg)}100%{transform:translateY(0) rotateY(1800deg)}}
-@keyframes flipT{0%{transform:translateY(0) rotateY(0deg)}45%{transform:translateY(-44px) rotateY(900deg)}100%{transform:translateY(0) rotateY(1980deg)}}
+@keyframes flipH{0%{transform:translateY(0) rotateX(0deg)}45%{transform:translateY(-44px) rotateX(900deg)}100%{transform:translateY(0) rotateX(1800deg)}}
+@keyframes flipT{0%{transform:translateY(0) rotateX(0deg)}45%{transform:translateY(-44px) rotateX(900deg)}100%{transform:translateY(0) rotateX(1980deg)}}
 .tossresult{text-align:center}
 .order{list-style:none;margin:0;padding:0;display:grid;gap:6px}
 .order li{display:flex;align-items:center;gap:8px;min-height:46px;padding:0 6px 0 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface2)}
@@ -409,7 +409,7 @@ let DB=null,pendingOps=[],chain=Promise.resolve();
 function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'base'});}
 const HISTKEY='cricketscorer.hist.v1',SYNCKEY='cricketscorer.sync.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
-const SYNC_URL='https://script.google.com/macros/s/AKfycbzijfhycI5xTHtL6QZb2cOOlhTk1LmKH_SA2xNtK-rVm-6DQGqCAkOo9FUToAwFF2OF/exec';
+const SYNC_URL='https://script.google.com/macros/s/AKfycbynNm3W4QjapMHwGqsb60oTf8oVLv0eJEqTm5ajdj6jEFX1aeTIKlqlWa2ASMWqPFvh/exec';
 let HIST=[];const SYNC={url:SYNC_URL,status:'',sheet:'',state:'idle',last:null,hide:null};
 function persistHist(){try{localStorage.setItem(HISTKEY,JSON.stringify(HIST));}catch(e){}}
 function loadHist(){try{const h=JSON.parse(localStorage.getItem(HISTKEY)||'null');if(Array.isArray(h)) HIST=h;}catch(e){}
@@ -493,7 +493,7 @@ function histRecord(final){
   const A=analyse(),r=matchOutcome(M,A);
   if(!M.recId){M.recId=newId('m');M.recAt=new Date().toISOString();}
   const scores=A.map((S,i)=>M.teams[M.innings[i].bat].name+' '+S.runs+'/'+S.wkts+' ('+fmtOvers(S.balls)+' ov)');
-  const rec={id:M.recId,at:M.recAt,t1:M.teams[0].name,t2:M.teams[1].name,format:M.format||'Custom',overs:M.overs||'',toss:tossText(),scores:scores,result:r?r.text:(final?'Not completed':''),tn:M.tour?M.tour.label:'',summary:summaryText(A),card:JSON.stringify(A.map((S,i)=>cardData(A,i)))};
+  const rec={id:M.recId,at:M.recAt,t1:M.teams[0].name,t2:M.teams[1].name,format:M.format||'Custom',overs:M.overs||'',toss:tossText(),scores:scores,result:r?r.text:(final?'Not completed':''),tn:M.tour?M.tour.label:'',tj:tossData(),summary:summaryText(A),card:JSON.stringify(A.map((S,i)=>cardData(A,i)))};
   tourRecord(A,r,rec);
   const i=HIST.findIndex(x=>x.id===rec.id);
   if(i>=0) HIST[i]=rec;else HIST.push(rec);
@@ -502,8 +502,8 @@ function histRecord(final){
   syncSoon();
 }
 function csvCell(v){v=String(v==null?'':v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
-const CSVHEAD=['Date','Team A','Team B','Format','Overs','Toss','Scores','Result','Category','Tournament'];
-function histRow(r){return [r.at?String(r.at).slice(0,10):'',r.t1,r.t2,r.format,r.overs,r.toss,(r.scores||[]).join(' | '),r.result,r.tn?'Tournament match':'Regular match',r.tn||''];}
+const CSVHEAD=['Date','Team A','Team B','Format','Overs','Toss','Scores','Result','Category','Tournament','Toss called by','Call','Bat flip landed','Toss won by','Chose to'];
+function histRow(r){return [r.at?String(r.at).slice(0,10):'',r.t1,r.t2,r.format,r.overs,r.toss,(r.scores||[]).join(' | '),r.result,r.tn?'Tournament match':'Regular match',r.tn||'',(r.tj||{}).caller||'',(r.tj||{}).call||'',(r.tj||{}).landed||'',(r.tj||{}).winner||'',(r.tj||{}).choice||''];}
 function histCsv(){return [CSVHEAD].concat(HIST.slice().reverse().map(histRow)).map(row=>row.map(csvCell).join(',')).join('\n')+'\n';}
 let syncT=null,syncSeq=0;
 const SYNCEDKEY='cricketscorer.synced.v1';
@@ -549,7 +549,7 @@ function buildSync(){
     let sc='',st='In progress';
     try{const A=analyse();sc=A.map((S,i)=>M.teams[M.innings[i].bat].name+' '+S.runs+'/'+S.wkts+' ('+fmtOvers(S.balls)+' ov)').join(' | ');const r=matchOutcome(M,A);if(r) st=r.text;}catch(e){}
     const tp=i=>M.teams[i],pn=(i,k)=>k==null?'':(tp(i).players[k]||'');
-    cur.push([tp(0).name+' v '+tp(1).name,M.format||'',M.overs||'',tossText(),M.tour?M.tour.label:'',sc,st,tp(0).name,pn(0,tp(0).cap),pn(0,tp(0).wk),tp(1).name,pn(1,tp(1).cap),pn(1,tp(1).wk)]);
+    cur.push([tp(0).name+' v '+tp(1).name,M.format||'',M.overs||'',tossText(),M.tour?M.tour.label:'',sc,st,tp(0).name,pn(0,tp(0).cap),pn(0,tp(0).wk),tp(1).name,pn(1,tp(1).cap),pn(1,tp(1).wk),tossData().caller,tossData().call,tossData().landed,tossData().winner,tossData().choice]);
   }
   const c=syncCards(),t=syncTours();
   const players=LIB.players.map(x=>[x.id,x.name]);
@@ -568,7 +568,7 @@ function buildSync(){
       {name:'Batting',head:['Match ID','Date','Match','Innings','Team','Batter','How out','Runs','Balls','4s','6s','Strike rate'],rows:c.bat},
       {name:'Bowling',head:['Match ID','Date','Match','Innings','Team','Bowler','Overs','Maidens','Runs','Wickets','Wides','No balls','Economy'],rows:c.bowl},
       {name:'Live',head:liveHead,rows:live},
-      {name:'Current match',head:['Match','Format','Overs','Toss','Tournament','Score','Status','Team A','Captain A','Wicketkeeper A','Team B','Captain B','Wicketkeeper B'],rows:cur},
+      {name:'Current match',head:['Match','Format','Overs','Toss','Tournament','Score','Status','Team A','Captain A','Wicketkeeper A','Team B','Captain B','Wicketkeeper B','Toss called by','Call','Bat flip landed','Toss won by','Chose to'],rows:cur},
       {name:'Tournaments',head:['Id','Tournament','Type','Overs','Status','Teams','Fixtures','Played','Created'],rows:t.tours},
       {name:'Fixtures',head:['Tournament','#','Stage','Team A','Team B','Status','Result','Scores','Date','Match ID'],rows:t.fix},
       {name:'Series',head:['Tournament','Team A','Wins A','Wins B','Team B','Ties','Draws','Played','Total','Status'],rows:t.ser},
@@ -584,7 +584,6 @@ function syncIndHtml(){
 }
 function setSync(st){
   SYNC.state=st;clearTimeout(SYNC.hide);
-  if(st==='done') SYNC.hide=setTimeout(()=>{if(SYNC.state==='done'){SYNC.state='idle';paintSync();}},3500);
   paintSync();
 }
 function paintSync(){const el=document.getElementById('syncind');if(el) el.outerHTML=syncIndHtml();}
@@ -594,14 +593,40 @@ function syncSoon(){
   if(b.sig===SYNC.last&&SYNC.state!=='fail') return;
   setSync('syncing');clearTimeout(syncT);syncT=setTimeout(()=>syncPush(false),700);
 }
-function syncPush(force){
+let syncTry=0,syncRetryT=null;
+function syncDone(b){
+  SYNC.last=b.sig;syncTry=0;clearTimeout(syncRetryT);
+  try{localStorage.setItem(SYNCEDKEY,sigHash(b.sig));}catch(e){}
+  SYNC.status='Last sent '+new Date().toLocaleTimeString()+' (the page cannot read the reply, so check your sheet).';
+  setSync('done');if(ui.hist) render();
+}
+function syncFail(msg){
+  SYNC.status=msg;setSync('fail');if(ui.hist) render();
+  /* Try again on its own a few times, a short wait each time longer than the last. */
+  clearTimeout(syncRetryT);
+  if(syncTry<4&&SYNC.url){syncTry++;syncRetryT=setTimeout(()=>{if(SYNC.url) syncPush(true);},Math.min(30000,2000*Math.pow(2,syncTry)));}
+}
+function syncPush(force,leaving){
   if(!SYNC.url) return Promise.resolve();
-  let u;try{u=new URL(SYNC.url);if(u.protocol!=='https:'&&u.protocol!=='http:') throw 0;}catch(e){SYNC.status='That Sync URL does not look like a web address.';setSync('fail');return Promise.resolve();}
-  const b=buildSync(),my=++syncSeq;
+  let u;try{u=new URL(SYNC.url);if(u.protocol!=='https:'&&u.protocol!=='http:') throw 0;}catch(e){syncTry=4;syncFail('That Sync URL does not look like a web address.');return Promise.resolve();}
+  if(/\/dev\/?$/.test(u.pathname)){syncTry=4;syncFail('That Sync URL ends in /dev. Use the web app URL that ends in /exec.');return Promise.resolve();}
+  let b;try{b=buildSync();}catch(e){syncFail('Could not prepare the data to send ('+(e&&e.message?e.message:'error')+').');return Promise.resolve();}
+  const my=++syncSeq;
   setSync('syncing');
-  return fetch(u.href,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:b.body})
-    .then(()=>{if(my!==syncSeq) return;SYNC.last=b.sig;try{localStorage.setItem(SYNCEDKEY,sigHash(b.sig));}catch(e){}SYNC.status='Last sent '+new Date().toLocaleTimeString()+' (the page cannot read the reply, so check your sheet).';setSync('done');if(ui.hist) render();},
-          ()=>{if(my!==syncSeq) return;SYNC.status='The Sync URL could not be reached from this page. Pages like this may be blocked from contacting outside addresses. Use "Save to Google Sheet" instead.';setSync('fail');if(ui.hist) render();});
+  const opts={method:'POST',mode:'no-cors',redirect:'follow',credentials:'omit',referrerPolicy:'no-referrer',headers:{'Content-Type':'text/plain;charset=utf-8'},body:b.body};
+  /* keepalive is only worth it while the page is closing, and it has a small size limit. */
+  if(leaving&&b.body.length<60000) opts.keepalive=true;
+  const beacon=()=>{
+    try{if(navigator.sendBeacon&&b.body.length<60000&&navigator.sendBeacon(u.href,new Blob([b.body],{type:'text/plain;charset=utf-8'}))) return true;}catch(e){}
+    return false;
+  };
+  const failed=()=>{
+    if(my!==syncSeq) return;
+    if(leaving&&beacon()) return;
+    syncFail('Could not reach the Sync URL. Check your internet connection and that the web app is deployed with access set to Anyone. It will try again on its own.');
+  };
+  let p;try{p=fetch(u.href,opts);}catch(e){failed();return Promise.resolve();}
+  return p.then(()=>{if(my!==syncSeq) return;syncDone(b);},failed);
 }
 async function exportSheet(){
   SYNC.sheet='';
@@ -640,7 +665,7 @@ function histCardHtml(){
   const toggle=have.length>1?'<div class="seg">'+have.map(i=>'<button class="opt" data-act="hist-inn" data-v="'+i+'" aria-pressed="'+(vi===i)+'">'+innName(i)+': '+esc(cards[i].bat)+'</button>').join('')+'</div>':'';
   const body=have.length?cardPanels(cards[vi]):'<section class="panel pad"><p class="muted">The detailed scorecard was not saved for this match, because it was played before scorecards were stored. This is the summary that was saved.</p><pre style="white-space:pre-wrap;font-family:var(--font-data);font-size:13px;margin:8px 0 0">'+esc(r.summary||'')+'</pre></section>';
   return head+'<section class="panel pad"><h1>'+esc(r.t1)+' v '+esc(r.t2)+'</h1><div class="when muted"><b>'+esc(d||'No date')+'</b> &middot; '+(r.tn?'Tournament match':'Regular match')+' &middot; '+esc(r.format)+(r.overs?' &middot; '+esc(r.overs)+' ov':'')+(r.tn?' &middot; '+esc(r.tn):'')+'</div>'+
-    '<p class="big" style="margin-top:8px">'+esc(r.result||'In progress')+'</p>'+(r.scores||[]).map(x=>'<div class="sc" style="font-family:var(--font-data);font-size:13px">'+esc(x)+'</div>').join('')+'<p class="note">'+esc(r.toss)+'</p></section>'+toggle+tossPanel(r.toss)+body+'</div>';
+    '<p class="big" style="margin-top:8px">'+esc(r.result||'In progress')+'</p>'+(r.scores||[]).map(x=>'<div class="sc" style="font-family:var(--font-data);font-size:13px">'+esc(x)+'</div>').join('')+'<p class="note">'+esc(r.toss)+'</p></section>'+toggle+tossPanel(r.toss,r.tj)+body+'</div>';
 }
 function seriesCardHtml(T,g){
   const na=tName(T,g.a),nb=tName(T,g.b);
@@ -733,7 +758,7 @@ let M=null;
 function freshSetup(){return {fmt:'T20',overs:'20',maxper:'',tossMode:'flip',caller:'0',call:'heads',coin:{state:'idle',result:''},winner:'',choice:'',slots:[{teamId:'',name:'',sel:[],newp:'',cap:'',wk:''},{teamId:'',name:'',sel:[],newp:'',cap:'',wk:''}]};}
 function freshUi(){return {mode:'n',wk:null,tab:'score',view:0,armed:null,copyText:null,screen:'setup',setup:freshSetup(),squads:{newp:'',editor:{teamId:'',name:'',sel:[],newp:''}},focus:null,top:false,chg:false,sub:null,menu:false,hist:null,tourId:null,tm:null,tnew:{name:'',type:'IPL',overs:'10'}};}
 let ui=freshUi();
-function save(){if(!M)return;syncSoon();try{localStorage.setItem(KEY,JSON.stringify(M));}catch(e){}livePush();}
+function save(){if(!M)return;M.savedAt=new Date().toISOString();syncSoon();try{localStorage.setItem(KEY,JSON.stringify(M));}catch(e){}livePush();}
 
 /* ---------- live match shared between devices ----------
    The match in progress is kept in one shared record. Every device writes to it after each change and
@@ -762,6 +787,7 @@ function liveApply(x,first){
   if(x&&x.by===DEVICE) return;
   if(liveDirty()) return;
   if(!x){if(M) livePush();return;}
+  if(first&&M&&M.savedAt&&x.at&&String(M.savedAt)>String(x.at)){livePush();return;}
   if(x.cleared){
     if(typeof x.rev==='number'&&x.rev>REV) REV=x.rev;
     if(M){M=null;clearSaved();ui=freshUi();ui.top=true;if(!first) toast('The match was ended on another device');render();}
@@ -849,7 +875,9 @@ function pickListHtml(k){
   const p=pk(k),other=otherSel(k),q=(ui.pickQ||'').trim().toLowerCase();
   const tm=(k!=='e'&&p.teamId)?LIB.teams.find(t=>t.id===p.teamId):null;
   const inSquad=id=>!!tm&&tm.playerIds.indexOf(id)>=0;
-  let list=LIB.players.filter(pl=>!q||pl.name.toLowerCase().indexOf(q)>=0);
+  const teamNames=id=>LIB.teams.filter(t=>t.playerIds.indexOf(id)>=0).map(t=>t.name);
+  const viaTeam=pl=>!!q&&pl.name.toLowerCase().indexOf(q)<0&&teamNames(pl.id).some(n=>n.toLowerCase().indexOf(q)>=0);
+  let list=LIB.players.filter(pl=>!q||pl.name.toLowerCase().indexOf(q)>=0||viaTeam(pl));
   if(tm) list=list.filter(pl=>inSquad(pl.id)).concat(list.filter(pl=>!inSquad(pl.id)));
   const full=p.sel.length>=maxSel(k);
   if(!list.length) return '<div class="empty">No saved players match "'+esc(ui.pickQ||'')+'".</div>';
@@ -857,14 +885,14 @@ function pickListHtml(k){
     const i=p.sel.indexOf(pl.id),on=i>=0,off=other.indexOf(pl.id)>=0;
     const btn=off?'<span class="pm">In other team</span>':
       '<button class="btn small'+(on?'':' primary')+'" data-act="pick-toggle" data-k="'+k+'" data-id="'+esc(pl.id)+'"'+(!on&&full?' disabled':'')+' aria-label="'+(on?'Remove ':'Add ')+esc(pl.name)+'">'+(on?'Remove':'Add')+'</button>';
-    return '<div class="prow'+(on?' on':'')+'"><span class="pn">'+esc(pl.name)+(inSquad(pl.id)?'<span class="sub">In this team\'s squad</span>':'')+'</span>'+(on?'<span class="pm">'+(i+1)+'</span>':'')+btn+'</div>';
+    return '<div class="prow'+(on?' on':'')+'"><span class="pn">'+esc(pl.name)+(viaTeam(pl)?'<span class="sub">'+esc(teamNames(pl.id).filter(n=>n.toLowerCase().indexOf(q)>=0).join(', '))+'</span>':inSquad(pl.id)?'<span class="sub">In this team\'s squad</span>':'')+'</span>'+(on?'<span class="pm">'+(i+1)+'</span>':'')+btn+'</div>';
   }).join('');
 }
 function pickModal(){
   const k=ui.pickK,p=pk(k);
   return '<div class="scrim" data-act="pick-close-bg"><div class="sheet" role="dialog" aria-modal="true" aria-label="Select players">'+
     '<h2>Select players</h2><p class="muted" style="margin:0"><b id="pcount">'+p.sel.length+' of '+maxSel(k)+(iplSquad(k)?' needed':' selected')+(p.sel.length>=maxSel(k)?' (full)':'')+'</b> from '+plural(LIB.players.length,'saved player')+'. Press Add beside a name. '+(k==='e'?'The number is the order in the squad.':'The first 11 play and the rest are substitutes. The number is the batting order.')+'</p>'+
-    '<input class="searchbox" id="psearch" type="search" data-f="psearch" value="'+esc(ui.pickQ||'')+'" placeholder="Search players" autocomplete="off" aria-label="Search players">'+
+    '<input class="searchbox" id="psearch" type="search" data-f="psearch" value="'+esc(ui.pickQ||'')+'" placeholder="Search players or a team" autocomplete="off" aria-label="Search players or a team">'+
     '<div class="plist" id="plist">'+(LIB.players.length?pickListHtml(k):'<div class="empty">No saved players yet.</div>')+'</div>'+
     '<div class="actions" style="margin-top:18px"><button class="btn primary" data-act="pick-close">Done</button></div></div></div>';
 }
@@ -1235,12 +1263,19 @@ function storeNote(){
 /* The toss is a bat with two sides. Internally 'heads' is Mountains and 'tails' is Rivers, which keeps older saved matches working. */
 function sideName(v){return v==='tails'||v==='rivers'?'Rivers':'Mountains';}
 function batFace(side){
-  const ridge=side==='heads';
-  /* The ridged (triangular) back of the bat is Mountains. The flat face is Rivers. */
-  const blade=ridge
-    ?'<rect x="14" y="50" width="46" height="104" rx="9" fill="#E8C190" stroke="#8A5A1E" stroke-width="2"/><path d="M37 52 L58 152 L37 152 Z" fill="#F4D7AE" opacity=".9"/><path d="M37 52 L16 152 L37 152 Z" fill="#CFA06A" opacity=".9"/><line x1="37" y1="52" x2="37" y2="153" stroke="#8A5A1E" stroke-width="1.6"/><rect x="14" y="50" width="46" height="104" rx="9" fill="none" stroke="#8A5A1E" stroke-width="2"/>'
-    :'<rect x="14" y="50" width="46" height="104" rx="9" fill="#E8C190" stroke="#8A5A1E" stroke-width="2"/><line x1="24" y1="70" x2="24" y2="140" stroke="#D2A66F" stroke-width="1"/><line x1="37" y1="62" x2="37" y2="146" stroke="#D2A66F" stroke-width="1"/><line x1="50" y1="70" x2="50" y2="140" stroke="#D2A66F" stroke-width="1"/>';
-  return '<svg viewBox="0 0 74 158" aria-hidden="true"><rect x="31" y="2" width="12" height="52" rx="5" fill="#2B2118"/><rect x="31" y="14" width="12" height="2" fill="#5A4636"/><rect x="31" y="22" width="12" height="2" fill="#5A4636"/><rect x="31" y="30" width="12" height="2" fill="#5A4636"/>'+blade+'</svg>';
+  /* Bat seen edge-on, like a real willow bat. Mountains: the back of the blade swells into a raised spine. Rivers: the flat striking face. */
+  const handle='<rect x="3" y="43" width="46" height="11" rx="5" fill="#2B2118"/><rect x="11" y="43" width="2.2" height="11" fill="#5A4636"/><rect x="18" y="43" width="2.2" height="11" fill="#5A4636"/><rect x="25" y="43" width="2.2" height="11" fill="#5A4636"/>'+
+    '<path d="M46 45 L64 44 L64 53 L46 52 Z" fill="#F6BC9A" stroke="#8A5A1E" stroke-width="1.6" stroke-linejoin="round"/>';
+  let blade;
+  if(side==='heads'){
+    blade='<path d="M62 46 C72 43 84 38 108 37 C130 36 146 41 154 48.5 L155 51 Q155 54 151 54 L66 54 Q62 54 62 51 Z" fill="#EBC48F" stroke="#8A5A1E" stroke-width="2" stroke-linejoin="round"/>'+
+      '<path d="M70 46 C84 41 100 40 122 40 C138 40 146 43 150 48" fill="none" stroke="#B98342" stroke-width="1.6" stroke-linecap="round"/>'+
+      '<path d="M68 48 L150 48 M68 51.5 L150 51.5" stroke="#C9985A" stroke-width="1" opacity=".8"/>';
+  }else{
+    blade='<path d="M62 45 L150 47.5 Q156 48.5 156 51 Q156 54 150 54 L66 54 Q62 54 62 51 Z" fill="#EBC48F" stroke="#8A5A1E" stroke-width="2" stroke-linejoin="round"/>'+
+      '<path d="M70 49 L150 49 M70 51.8 L150 51.8" stroke="#C9985A" stroke-width="1" opacity=".8"/>';
+  }
+  return '<svg viewBox="0 0 158 74" aria-hidden="true">'+handle+blade+'</svg>';
 }
 function tn(i){return normName(ui.setup.slots[i].name)||('Team '+'AB'[i]);}
 function tnSpan(i){return '<span data-tn="'+i+'">'+esc(tn(i))+'</span>';}
@@ -1690,11 +1725,16 @@ function cardPanels(d){
     '<section class="panel"><h3>'+esc(d.bowl)+' bowling <em>overs-maidens-runs-wickets</em></h3><div class="tbl-wrap"><table><thead><tr><th>Bowler</th><th>O</th><th>M</th><th>R</th><th>W</th><th>Wd</th><th>Nb</th><th>Econ</th></tr></thead><tbody>'+
     (brows||'<tr><td colspan="8" class="muted">No overs bowled yet</td></tr>')+'</tbody></table></div></section>';
 }
-function tossPanel(text){return text?'<section class="panel"><h3>Toss</h3><div class="line" style="border-top:0"><b>'+esc(text)+'.</b></div></section>':'';}
+function tossPanel(text,tj){
+  if(!text) return '';
+  const row=(k,v)=>v?'<div class="line"><b>'+k+'</b> '+esc(v)+'</div>':'';
+  const det=tj?(tj.caller?row('Called by',tj.caller)+row('Call',tj.call)+row('Bat flip landed on',tj.landed):row('Toss','Done off the app'))+row('Won by',tj.winner)+row('Chose to',tj.choice):'';
+  return '<section class="panel"><h3>Toss</h3><div class="line" style="border-top:0"><b>'+esc(text)+'.</b></div>'+det+'</section>';
+}
 function cardTab(A){
   const vi=Math.min(ui.view,A.length-1),S=A[vi];
-  if(!S.started) return viewToggle(A)+tossPanel(tossText())+'<div class="panel pad"><p class="muted">This innings has not started.</p></div>';
-  return viewToggle(A)+tossPanel(tossText())+cardPanels(cardData(A,vi));
+  if(!S.started) return viewToggle(A)+tossPanel(tossText(),tossData())+'<div class="panel pad"><p class="muted">This innings has not started.</p></div>';
+  return viewToggle(A)+tossPanel(tossText(),tossData())+cardPanels(cardData(A,vi));
 }
 function oversTab(A){
   const vi=Math.min(ui.view,A.length-1),S=A[vi],inn=M.innings[vi];
@@ -1718,6 +1758,10 @@ function summaryText(A){
 function formatText(){
   if(!M.overs) return 'Test match · '+nInnings(M)+' innings · no over limit · no limit on overs per bowler';
   return (M.format&&M.format!=='Custom'?M.format+' · ':'')+M.overs+' overs per innings · '+(M.maxPer?'max '+M.maxPer+' overs per bowler':'no limit on overs per bowler')+(M.maxSubs?' · '+M.maxSubs+' impact player per team':'');
+}
+function tossData(){
+  const t=M.toss,flip=t.mode==='flip'&&t.result;
+  return {mode:flip?'Bat flip':'Toss done off the app',caller:flip?M.teams[t.caller].name:'',call:flip?sideName(t.call):'',landed:flip?sideName(t.result):'',winner:M.teams[t.winner].name,choice:t.choice==='bat'?'Bat first':'Bowl first'};
 }
 function tossText(){
   const t=M.toss;let s='';
@@ -1933,11 +1977,19 @@ loadLib();loadHist();loadTours();
 M=load();
 /* A finished match is not reopened: it is kept in Match history and the app opens normally. Only a half-scored match is resumed. */
 if(M){try{if(matchOutcome(M,analyse())){if(!M.recKey) histRecord(false);clearSaved();M=null;}}catch(e){}}
-/* A half-scored match is only reopened when everything entered so far had reached the spreadsheet. */
-if(M){let ok=false;try{ok=!!SYNC.url&&localStorage.getItem(SYNCEDKEY)===sigHash(buildSync().sig);}catch(e){}if(!ok) M=null;}
+/* A half-scored match is always reopened where it was left, and sent to the spreadsheet again in case the last change did not get through. */
 if(M) ui.view=M.cur;
 render();
 initDb();
+if(M&&SYNC.url) syncSoon();
+/* Leaving or closing the app never loses the match: pending saves are sent straight away, and anything that failed is retried when the connection returns. */
+function flushNow(){
+  if(liveT!==null){clearTimeout(liveT);liveT=null;liveWrite(()=>{if(!M) return null;REV++;return {json:JSON.stringify(M),rev:REV,by:DEVICE,at:new Date().toISOString()};});}
+  if(SYNC.url&&syncT!==null){clearTimeout(syncT);syncT=null;syncPush(false,true);}
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden') flushNow();});
+window.addEventListener('pagehide',flushNow);
+window.addEventListener('online',()=>{if(SYNC.url) syncPush(true);if(M) livePush();});
 </script>
 </body>
 </html>
