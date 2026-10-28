@@ -28,9 +28,6 @@
   --board-ink:#EFFAF8;
   --board-muted:#9FCFCA;
   --board-line:#26605C;
-  --coin:#E2B34A;
-  --coin-edge:#A8771A;
-  --coin-ink:#4A3208;
   --wicket:#B3261E;
   --wicket-ink:#FFFFFF;
   --four:#1F5F8F;
@@ -82,6 +79,13 @@ button{touch-action:manipulation}
 .vs{min-width:0;font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right}
 .tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;background:var(--bg);padding:6px 0;border-bottom:1px solid var(--line)}
 .tabs.two{grid-template-columns:repeat(2,1fr)}
+.tabs.three{grid-template-columns:repeat(3,1fr)}
+.tabs.three .tab{font-size:13px;padding:0 4px}
+.catlabel{font-family:var(--font-display);font-size:24px;margin:18px 2px 0}
+.fixrow{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px;border-top:1px solid var(--line)}
+.fixrow .fx{flex:1 1 180px;min-width:0}
+.fixrow .fx .name{display:block}
+.fixrow .fxb{display:flex;gap:6px;flex-wrap:wrap}
 .tab{min-height:44px;border:0;border-radius:8px;background:transparent;color:var(--muted);font-weight:600;font-size:14px;cursor:pointer}
 .tab[aria-selected="true"]{background:var(--ink);color:var(--bg)}
 
@@ -211,14 +215,14 @@ h1{font-family:var(--font-display);font-size:34px;line-height:1.05;margin:0 0 6p
 .toast:empty{display:none}
 
 /* Toss */
-.coinwrap{perspective:700px;display:grid;place-items:center;padding:14px 0 6px;min-height:150px}
-.coin{width:96px;height:96px;position:relative;transform-style:preserve-3d}
-.coin .face{position:absolute;inset:0;border-radius:50%;display:grid;place-items:center;backface-visibility:hidden;-webkit-backface-visibility:hidden;
-  font-family:var(--font-display);font-weight:700;font-size:46px;background:var(--coin);color:var(--coin-ink);border:5px solid var(--coin-edge)}
-.coin .tails{transform:rotateY(180deg)}
-.coin.rest-tails{transform:rotateY(180deg)}
-.coin.flip-heads{animation:flipH 1.5s cubic-bezier(.2,.7,.3,1) forwards}
-.coin.flip-tails{animation:flipT 1.5s cubic-bezier(.2,.7,.3,1) forwards}
+.batwrap{perspective:700px;display:grid;place-items:center;padding:14px 0 6px;min-height:190px}
+.batflip{width:74px;height:158px;position:relative;transform-style:preserve-3d}
+.batflip .face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.batflip .face svg{width:100%;height:100%;display:block;filter:drop-shadow(0 3px 3px rgba(10,38,37,.3))}
+.batflip .rivers{transform:rotateY(180deg)}
+.batflip.rest-tails{transform:rotateY(180deg)}
+.batflip.flip-heads{animation:flipH 1.5s cubic-bezier(.2,.7,.3,1) forwards}
+.batflip.flip-tails{animation:flipT 1.5s cubic-bezier(.2,.7,.3,1) forwards}
 @keyframes flipH{0%{transform:translateY(0) rotateY(0deg)}45%{transform:translateY(-44px) rotateY(900deg)}100%{transform:translateY(0) rotateY(1800deg)}}
 @keyframes flipT{0%{transform:translateY(0) rotateY(0deg)}45%{transform:translateY(-44px) rotateY(900deg)}100%{transform:translateY(0) rotateY(1980deg)}}
 .tossresult{text-align:center}
@@ -405,7 +409,7 @@ let DB=null,pendingOps=[],chain=Promise.resolve();
 function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'base'});}
 const HISTKEY='cricketscorer.hist.v1',SYNCKEY='cricketscorer.sync.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
-const SYNC_URL='https://script.google.com/macros/s/AKfycbyh2tAmsNQy3FR6w2Hb-ChaxJzdcRKfUQRkFmfqEl-LoDyhu_mrXKYm8DUFoQfjT1MU/exec';
+const SYNC_URL='https://script.google.com/macros/s/AKfycbzijfhycI5xTHtL6QZb2cOOlhTk1LmKH_SA2xNtK-rVm-6DQGqCAkOo9FUToAwFF2OF/exec';
 let HIST=[];const SYNC={url:SYNC_URL,status:'',sheet:'',state:'idle',last:null,hide:null};
 function persistHist(){try{localStorage.setItem(HISTKEY,JSON.stringify(HIST));}catch(e){}}
 function loadHist(){try{const h=JSON.parse(localStorage.getItem(HISTKEY)||'null');if(Array.isArray(h)) HIST=h;}catch(e){}
@@ -474,6 +478,11 @@ async function initDb(){
      const first=liveFirst;liveFirst=false;
      try{liveApply(d?(d.data()||{}):null,first);}catch(e){}
    },()=>{});}
+  db.collection('tournaments').onSnapshot(snap=>{
+    if(snap.empty&&snap.metadata.fromCache&&!snap.metadata.hasPendingWrites) return;
+    TOURS=snap.docs.map(d=>{try{return JSON.parse((d.data()||{}).json);}catch(e){return null;}}).filter(t=>t&&t.id&&Array.isArray(t.teams)&&Array.isArray(t.fixtures));
+    persistTours();libChanged();
+  },()=>{});
   sub('matches',docs=>{HIST=docs.map(d=>Object.assign({},d.data()||{},{id:d.id})).filter(r=>r.t1);HIST.sort((a,b)=>String(b.at).localeCompare(String(a.at)));persistHist();});
   libChanged();
 }
@@ -484,7 +493,8 @@ function histRecord(final){
   const A=analyse(),r=matchOutcome(M,A);
   if(!M.recId){M.recId=newId('m');M.recAt=new Date().toISOString();}
   const scores=A.map((S,i)=>M.teams[M.innings[i].bat].name+' '+S.runs+'/'+S.wkts+' ('+fmtOvers(S.balls)+' ov)');
-  const rec={id:M.recId,at:M.recAt,t1:M.teams[0].name,t2:M.teams[1].name,format:M.format||'Custom',overs:M.overs||'',toss:tossText(),scores:scores,result:r?r.text:(final?'Not completed':''),summary:summaryText(A),card:JSON.stringify(A.map((S,i)=>cardData(A,i)))};
+  const rec={id:M.recId,at:M.recAt,t1:M.teams[0].name,t2:M.teams[1].name,format:M.format||'Custom',overs:M.overs||'',toss:tossText(),scores:scores,result:r?r.text:(final?'Not completed':''),tn:M.tour?M.tour.label:'',summary:summaryText(A),card:JSON.stringify(A.map((S,i)=>cardData(A,i)))};
+  tourRecord(A,r,rec);
   const i=HIST.findIndex(x=>x.id===rec.id);
   if(i>=0) HIST[i]=rec;else HIST.push(rec);
   HIST.sort((a,b)=>String(b.at).localeCompare(String(a.at)));persistHist();
@@ -492,21 +502,78 @@ function histRecord(final){
   syncSoon();
 }
 function csvCell(v){v=String(v==null?'':v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
-const CSVHEAD=['Date','Team A','Team B','Format','Overs','Toss','Scores','Result'];
-function histRow(r){return [r.at?String(r.at).slice(0,10):'',r.t1,r.t2,r.format,r.overs,r.toss,(r.scores||[]).join(' | '),r.result];}
+const CSVHEAD=['Date','Team A','Team B','Format','Overs','Toss','Scores','Result','Category','Tournament'];
+function histRow(r){return [r.at?String(r.at).slice(0,10):'',r.t1,r.t2,r.format,r.overs,r.toss,(r.scores||[]).join(' | '),r.result,r.tn?'Tournament match':'Regular match',r.tn||''];}
 function histCsv(){return [CSVHEAD].concat(HIST.slice().reverse().map(histRow)).map(row=>row.map(csvCell).join(',')).join('\n')+'\n';}
 let syncT=null,syncSeq=0;
 const SYNCEDKEY='cricketscorer.synced.v1';
 function sigHash(t){let h=5381;for(let i=0;i<t.length;i++) h=((h<<5)+h+t.charCodeAt(i))|0;return t.length+':'+h;}
+function syncCards(){
+  const inn=[],bat=[],bowl=[];
+  HIST.slice().reverse().forEach(r=>{
+    let cards=[];try{cards=JSON.parse(r.card||'[]')||[];}catch(e){}
+    const date=r.at?String(r.at).slice(0,10):'',name=r.t1+' v '+r.t2;
+    cards.forEach((c,i)=>{
+      if(!c) return;
+      const ex=c.ex||{wd:0,nb:0,b:0,lb:0};
+      inn.push([r.id,date,name,i+1,c.bat,c.runs,c.wkts,fmtOvers(c.balls),(ex.wd||0)+(ex.nb||0)+(ex.b||0)+(ex.lb||0),(c.fow||[]).join(', ')]);
+      (c.rows||[]).forEach(b=>bat.push([r.id,date,name,i+1,c.bat,b.n,b.how,b.r,b.b,b.f,b.s,b.b?+(b.r*100/b.b).toFixed(1):'']));
+      (c.bowlers||[]).forEach(w=>bowl.push([r.id,date,name,i+1,c.bowl,w.n,fmtOvers(w.b),w.m,w.r,w.w,w.wd,w.nb,w.b?+(w.r*6/w.b).toFixed(2):'']));
+    });
+  });
+  return {inn:inn,bat:bat,bowl:bowl};
+}
+function syncTours(){
+  const tours=[],fix=[],ser=[],log=[];
+  TOURS.forEach(T=>{
+    tours.push([T.id,T.name,TT[T.type]||T.type,T.overs==null?'':T.overs,tourFinished(T)?'Finished':'In progress',T.teams.map(t=>t.name).join(', '),T.fixtures.length,T.fixtures.filter(f=>f.done).length,T.at?String(T.at).slice(0,10):'']);
+    T.fixtures.forEach((f,i)=>fix.push([T.name,i+1,f.label,tName(T,f.a),tName(T,f.b),f.done?'Played':(f.live?'In progress':'Not played'),f.result?f.result.text:'',f.result?(f.result.scores||[]).join(' | '):'',f.result&&f.result.at?String(f.result.at).slice(0,10):'',f.result?(f.result.rec||''):'']));
+    tourPairs(T).forEach(g=>ser.push([T.name,tName(T,g.a),g.wa,g.wb,tName(T,g.b),g.ties,g.draws,g.played,g.total,g.played===g.total?'Complete':'In progress']));
+    (T.log||[]).forEach(e=>log.push([T.name,e.at,e.text]));
+  });
+  return {tours:tours,fix:fix,ser:ser,log:log};
+}
 function buildSync(){
   const nm=id=>libName(id)||'';
   const live=[];
-  if(M)M.innings.forEach((inn,ii)=>inn.events.forEach((e,k)=>live.push([M.teams[0].name+' v '+M.teams[1].name,ii+1,k+1,e.t,e.k||'',e.r==null?'':e.r,e.w?e.w.how:'',e.id==null?'':e.id])));
+  if(M)M.innings.forEach((inn,ii)=>{
+    const bt=M.teams[inn.bat].players,bw=M.teams[inn.bowl].players;
+    let cb='';
+    inn.events.forEach((e,k)=>{
+      if(e.t==='bowler') cb=bw[e.id]||'';
+      live.push([M.teams[0].name+' v '+M.teams[1].name,ii+1,k+1,e.t,e.k||'',e.r==null?'':e.r,e.t==='bowler'?(bw[e.id]||''):cb,e.w?e.w.how:'',e.w?(bt[e.w.out]||''):'',e.w&&e.w.f!=null&&e.w.f!==''?(bw[e.w.f]||''):'',e.id==null?'':e.id]);
+    });
+  });
+  const cur=[];
+  if(M){
+    let sc='',st='In progress';
+    try{const A=analyse();sc=A.map((S,i)=>M.teams[M.innings[i].bat].name+' '+S.runs+'/'+S.wkts+' ('+fmtOvers(S.balls)+' ov)').join(' | ');const r=matchOutcome(M,A);if(r) st=r.text;}catch(e){}
+    const tp=i=>M.teams[i],pn=(i,k)=>k==null?'':(tp(i).players[k]||'');
+    cur.push([tp(0).name+' v '+tp(1).name,M.format||'',M.overs||'',tossText(),M.tour?M.tour.label:'',sc,st,tp(0).name,pn(0,tp(0).cap),pn(0,tp(0).wk),tp(1).name,pn(1,tp(1).cap),pn(1,tp(1).wk)]);
+  }
+  const c=syncCards(),t=syncTours();
+  const players=LIB.players.map(x=>[x.id,x.name]);
+  const teams=LIB.teams.map(x=>[x.id,x.name,x.playerIds.map(nm).join(', '),nm(x.capId),nm(x.wkId)]);
+  const liveHead=['Match','Innings','Event #','Type','Ball kind','Runs','Bowler','Wicket','Batter out','Fielder','Bowler id'];
   const o={app:'CricketScorer',
-    players:LIB.players.map(x=>[x.id,x.name]),
-    teams:LIB.teams.map(t=>[t.id,t.name,t.playerIds.map(nm).join(', ')]),
+    players:players,
+    teams:teams.map(r=>r.slice(0,3)),
     head:CSVHEAD,rows:HIST.slice().reverse().map(histRow),
-    liveHead:['Match','Innings','Event #','Type','Ball kind','Runs','Wicket','Bowler id'],live:live};
+    liveHead:liveHead,live:live,
+    tabs:[
+      {name:'Players',head:['Id','Name'],rows:players},
+      {name:'Teams',head:['Id','Team','Players','Captain','Wicketkeeper'],rows:teams},
+      {name:'Matches',head:['Match ID'].concat(CSVHEAD),rows:HIST.slice().reverse().map(r=>[r.id].concat(histRow(r)))},
+      {name:'Innings',head:['Match ID','Date','Match','Innings','Batting team','Runs','Wickets','Overs','Extras','Fall of wickets'],rows:c.inn},
+      {name:'Batting',head:['Match ID','Date','Match','Innings','Team','Batter','How out','Runs','Balls','4s','6s','Strike rate'],rows:c.bat},
+      {name:'Bowling',head:['Match ID','Date','Match','Innings','Team','Bowler','Overs','Maidens','Runs','Wickets','Wides','No balls','Economy'],rows:c.bowl},
+      {name:'Live',head:liveHead,rows:live},
+      {name:'Current match',head:['Match','Format','Overs','Toss','Tournament','Score','Status','Team A','Captain A','Wicketkeeper A','Team B','Captain B','Wicketkeeper B'],rows:cur},
+      {name:'Tournaments',head:['Id','Tournament','Type','Overs','Status','Teams','Fixtures','Played','Created'],rows:t.tours},
+      {name:'Fixtures',head:['Tournament','#','Stage','Team A','Team B','Status','Result','Scores','Date','Match ID'],rows:t.fix},
+      {name:'Series',head:['Tournament','Team A','Wins A','Wins B','Team B','Ties','Draws','Played','Total','Status'],rows:t.ser},
+      {name:'Activity',head:['Tournament','When','What happened'],rows:t.log}
+    ]};
   const sig=JSON.stringify(o);o.sentAt=new Date().toISOString();
   return {sig:sig,body:JSON.stringify(o)};
 }
@@ -559,37 +626,75 @@ async function exportCsv(){
 }
 function menuHtml(){
   return '<div class="menuwrap"><button class="dots" data-act="menu" aria-label="Menu" aria-haspopup="true" aria-expanded="'+ui.menu+'"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="19" r="2" fill="currentColor"/></svg></button>'+
-    (ui.menu?'<div class="menu" role="menu"><button role="menuitem" data-act="hist-open">Match history</button></div>':'')+'</div>';
+    (ui.menu?'<div class="menu" role="menu"><button role="menuitem" data-act="hist-open">Match history</button><button role="menuitem" data-act="results-open">Results</button></div>':'')+'</div>';
 }
 function histCardHtml(){
   const r=HIST.find(x=>x.id===ui.histId);
   const head='<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div>'+
-    '<div class="actions" style="margin-top:0"><button class="btn small" data-act="hist-back">&larr; Match history</button></div>';
+    '<div class="actions" style="margin-top:0"><button class="btn small" data-act="hist-back">&larr; '+(ui.histFrom==='tours'?'Results':ui.histFrom==='close'?'Back':'Match history')+'</button></div>';
   if(!r) return head+'<section class="panel pad"><p class="muted">That match is no longer saved.</p></section></div>';
-  let d='';try{d=new Date(r.at).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'});}catch(e){}
+  const d=fmtDate(r.at);
   let cards=[];try{cards=JSON.parse(r.card||'[]')||[];}catch(e){}
   const have=cards.map((c,i)=>c?i:-1).filter(i=>i>=0);
   const vi=have.indexOf(ui.histInn)>=0?ui.histInn:(have[0]!=null?have[0]:0);
   const toggle=have.length>1?'<div class="seg">'+have.map(i=>'<button class="opt" data-act="hist-inn" data-v="'+i+'" aria-pressed="'+(vi===i)+'">'+innName(i)+': '+esc(cards[i].bat)+'</button>').join('')+'</div>':'';
   const body=have.length?cardPanels(cards[vi]):'<section class="panel pad"><p class="muted">The detailed scorecard was not saved for this match, because it was played before scorecards were stored. This is the summary that was saved.</p><pre style="white-space:pre-wrap;font-family:var(--font-data);font-size:13px;margin:8px 0 0">'+esc(r.summary||'')+'</pre></section>';
-  return head+'<section class="panel pad"><h1>'+esc(r.t1)+' v '+esc(r.t2)+'</h1><div class="when muted">'+esc(d)+' &middot; '+esc(r.format)+(r.overs?' &middot; '+esc(r.overs)+' ov':'')+'</div>'+
-    '<p class="big" style="margin-top:8px">'+esc(r.result||'In progress')+'</p>'+(r.scores||[]).map(x=>'<div class="sc" style="font-family:var(--font-data);font-size:13px">'+esc(x)+'</div>').join('')+'<p class="note">'+esc(r.toss)+'</p></section>'+toggle+body+'</div>';
+  return head+'<section class="panel pad"><h1>'+esc(r.t1)+' v '+esc(r.t2)+'</h1><div class="when muted"><b>'+esc(d||'No date')+'</b> &middot; '+(r.tn?'Tournament match':'Regular match')+' &middot; '+esc(r.format)+(r.overs?' &middot; '+esc(r.overs)+' ov':'')+(r.tn?' &middot; '+esc(r.tn):'')+'</div>'+
+    '<p class="big" style="margin-top:8px">'+esc(r.result||'In progress')+'</p>'+(r.scores||[]).map(x=>'<div class="sc" style="font-family:var(--font-data);font-size:13px">'+esc(x)+'</div>').join('')+'<p class="note">'+esc(r.toss)+'</p></section>'+toggle+tossPanel(r.toss)+body+'</div>';
+}
+function seriesCardHtml(T,g){
+  const na=tName(T,g.a),nb=tName(T,g.b);
+  const extra=[g.ties?plural(g.ties,'tie'):'',g.draws?plural(g.draws,'draw'):''].filter(Boolean).join(', ');
+  const lead=g.played===0?'Not started':g.wa===g.wb?(g.played===g.total?'Series level':'Level'):(g.wa>g.wb?na:nb)+(g.played===g.total?' won the series':' lead');
+  const games=g.fx.filter(f=>f.done&&f.result).map(f=>{
+    const has=f.result.rec&&HIST.some(x=>x.id===f.result.rec);
+    const rd=fmtDate(f.result.at||((HIST.find(x=>x.id===f.result.rec)||{}).at))||'No date';
+    return '<div class="fixrow"><div class="fx"><span class="name">'+esc(f.label)+'</span><span class="sub"><b>'+esc(rd)+'</b> &middot; Tournament match</span><span class="sub"><b>'+esc(f.result.text)+'</b></span>'+((f.result.scores||[]).length?'<span class="sub">'+f.result.scores.map(esc).join(' &middot; ')+'</span>':'')+'</div>'+
+      (has?'<div class="fxb"><button class="btn small" data-act="hist-view" data-from="tours" data-id="'+esc(f.result.rec)+'">Scorecard</button></div>':'')+'</div>';
+  }).join('');
+  return '<section class="panel"><h3><span>'+esc(T.name)+'</span><em>'+g.played+' of '+g.total+' played</em></h3>'+
+    '<div class="tcard" style="border-top:0;padding-bottom:6px"><div class="big" style="margin:0">'+esc(na)+' '+g.wa+'&ndash;'+g.wb+' '+esc(nb)+'</div><div class="note">'+esc(lead)+(extra?' &middot; '+extra:'')+'</div></div>'+games+'</section>';
+}
+function regularResultHtml(r){
+  return '<section class="panel"><div class="tcard" style="border-top:0"><div class="when muted"><b>'+esc(fmtDate(r.at)||'No date')+'</b> &middot; Regular match &middot; '+esc(r.format)+(r.overs?' &middot; '+esc(r.overs)+' ov':'')+'</div>'+
+    '<div class="res" style="font-weight:700">'+esc(r.t1)+' v '+esc(r.t2)+'</div><div>'+esc(r.result||'In progress')+'</div>'+(r.scores||[]).map(x=>'<div class="sc" style="font-family:var(--font-data);font-size:13px">'+esc(x)+'</div>').join('')+
+    '<div class="actions"><button class="btn small" data-act="hist-view" data-from="tours" data-id="'+esc(r.id)+'">Scorecard</button></div></div></section>';
+}
+function resultsHtml(){
+  const rf=ui.resFilter||'all';
+  const sorted=TOURS.slice().sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+  const blocks=sorted.map(T=>{
+    const fin=tourFinished(T);
+    const ser=tourPairs(T).filter(g=>fin?g.played>0:(g.played>0&&g.played===g.total));
+    if(!ser.length) return '';
+    return '<h3 class="stephead" style="margin:16px 2px 0"><b>'+(fin?'Finished':'In progress')+'</b> '+esc(T.name)+' &middot; '+esc(TT[T.type])+'</h3>'+ser.map(g=>seriesCardHtml(T,g)).join('')+
+      '<div class="actions"><button class="btn small" data-act="results-view" data-id="'+esc(T.id)+'">Open tournament</button></div>';
+  }).join('');
+  const reg=HIST.filter(r=>!r.tn&&r.result);
+  const tourPart=(rf!=='reg')?('<h2 class="catlabel">Tournament match</h2>'+(blocks||'<section class="panel pad"><p class="muted">No tournament series results yet.</p></section>')):'';
+  const regPart=(rf!=='tour')?('<h2 class="catlabel">Regular match</h2>'+(reg.length?reg.map(regularResultHtml).join(''):'<section class="panel pad"><p class="muted">No regular match results yet.</p></section>')):'';
+  return '<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div>'+
+    '<div class="actions" style="margin-top:0"><button class="btn small" data-act="hist-close">&larr; Back</button></div>'+
+    '<section class="panel pad"><h1>Results</h1><p class="note">Results sorted into tournament matches and regular matches, with the date of each match. Tournament series show the score between the two teams and the result of every match in it. Every scorecard is also in Match history.</p>'+catBtns('res-filter',rf)+'</section>'+
+    tourPart+regPart+'</div>';
 }
 function histHtml(){
+  if(ui.hist==='tours') return resultsHtml();
   if(ui.hist==='card') return histCardHtml();
-  const items=HIST.length?HIST.map(r=>{
-    let d='';try{d=new Date(r.at).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'});}catch(e){}
+  const hf=ui.histFilter||'all',shown=HIST.filter(r=>catOk(r,hf));
+  const items=shown.length?shown.map(r=>{
+    const d=fmtDate(r.at);
     const armed=ui.armed==='h:'+r.id;
-    return '<div class="hrec"><div class="when">'+esc(d)+' &middot; '+esc(r.format)+(r.overs?' &middot; '+esc(r.overs)+' ov':'')+'</div>'+
+    return '<div class="hrec"><div class="when"><b>'+esc(d||'No date')+'</b> &middot; '+(r.tn?'Tournament match':'Regular match')+' &middot; '+esc(r.format)+(r.overs?' &middot; '+esc(r.overs)+' ov':'')+(r.tn?' &middot; '+esc(r.tn):'')+'</div>'+
       '<div class="res">'+esc(r.t1)+' v '+esc(r.t2)+'</div>'+
       '<div>'+esc(r.result||'In progress')+'</div>'+
       (r.scores||[]).map(x=>'<div class="sc">'+esc(x)+'</div>').join('')+
       '<div class="note">'+esc(r.toss)+'</div>'+
       '<div class="actions" style="margin-top:6px"><button class="btn small primary" data-act="hist-view" data-id="'+esc(r.id)+'">Full scorecard</button><button class="btn small'+(armed?' armed':' danger')+'" data-act="'+(armed?'hist-del':'hist-del-arm')+'" data-id="'+esc(r.id)+'">'+(armed?'Tap again to delete':'Delete')+'</button></div></div>';
-  }).join(''):'<p class="muted">No matches yet. A match is saved here as soon as it has a result.</p>';
+  }).join(''):'<p class="muted">'+(HIST.length?'No '+(hf==='tour'?'tournament':'regular')+' matches yet.':'No matches yet. A match is saved here as soon as it has a result.')+'</p>';
   return '<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div>'+
     '<div class="actions" style="margin-top:0"><button class="btn small" data-act="hist-close">&larr; Back</button></div>'+
-    '<section class="panel pad"><h1>Match history</h1>'+(LIB.mode==='db'?'<p class="note">Saved with this app and kept between sessions.</p>':'<p class="note">Saved in this browser only.</p>')+items+'</section>'+
+    '<section class="panel pad"><h1>Match history</h1>'+catBtns('hist-filter',ui.histFilter||'all')+(LIB.mode==='db'?'<p class="note">Saved with this app and kept between sessions.</p>':'<p class="note">Saved in this browser only.</p>')+items+'</section>'+
     '<section class="panel pad" id="syncpanel"><h3>Spreadsheet sync</h3>'+
     '<label class="field"><span>Sync URL</span><input id="syncurl" type="url" inputmode="url" autocomplete="off" placeholder="https://script.google.com/macros/s/.../exec" value="'+esc(SYNC.url)+'" data-f="sync"></label>'+
     '<p class="note">All your data (players, teams, matches and the live ball-by-ball) is sent to this address whenever anything changes.'+(SYNC.status?' <b>'+esc(SYNC.status)+'</b>':'')+'</p>'+
@@ -604,11 +709,15 @@ function histAct(a,d){
     case 'menu':ui.menu=!ui.menu;break;
     case 'hist-open':ui.hist='list';ui.top=!d.v;if(d.v==='sync')ui.top=false;break;
     case 'hist-close':ui.hist=null;ui.top=true;break;
-    case 'hist-view':ui.hist='card';ui.histId=d.id;ui.histInn=0;ui.top=true;break;
-    case 'hist-back':ui.hist='list';ui.top=true;break;
+    case 'hist-filter':ui.histFilter=d.v;break;
+    case 'res-filter':ui.resFilter=d.v;break;
+    case 'results-open':ui.hist='tours';ui.top=true;break;
+    case 'results-view':ui.hist=null;ui.screen='tours';ui.tourId=d.id;ui.top=true;break;
+    case 'hist-view':ui.hist='card';ui.histId=d.id;ui.histInn=0;ui.histFrom=d.from||'list';ui.top=true;break;
+    case 'hist-back':ui.hist=ui.histFrom==='tours'?'tours':ui.histFrom==='close'?null:'list';ui.top=true;break;
     case 'hist-inn':ui.histInn=+d.v;break;
     case 'hist-del-arm':ui.armed='h:'+d.id;break;
-    case 'hist-del':{const id=d.id;HIST=HIST.filter(x=>x.id!==id);persistHist();ui.armed=null;remote(db=>db.doc('matches/'+id).delete());break;}
+    case 'hist-del':{const id=d.id;HIST=HIST.filter(x=>x.id!==id);persistHist();syncSoon();ui.armed=null;remote(db=>db.doc('matches/'+id).delete());break;}
     case 'sync-all':syncPush(true);return true;
     case 'export-sheet':exportSheet();return true;
     case 'export-csv':exportCsv();return true;
@@ -622,7 +731,7 @@ function histAct(a,d){
 /* ---------- app state ---------- */
 let M=null;
 function freshSetup(){return {fmt:'T20',overs:'20',maxper:'',tossMode:'flip',caller:'0',call:'heads',coin:{state:'idle',result:''},winner:'',choice:'',slots:[{teamId:'',name:'',sel:[],newp:'',cap:'',wk:''},{teamId:'',name:'',sel:[],newp:'',cap:'',wk:''}]};}
-function freshUi(){return {mode:'n',wk:null,tab:'score',view:0,armed:null,copyText:null,screen:'setup',setup:freshSetup(),squads:{newp:'',editor:{teamId:'',name:'',sel:[],newp:''}},focus:null,top:false,chg:false,sub:null,menu:false,hist:null};}
+function freshUi(){return {mode:'n',wk:null,tab:'score',view:0,armed:null,copyText:null,screen:'setup',setup:freshSetup(),squads:{newp:'',editor:{teamId:'',name:'',sel:[],newp:''}},focus:null,top:false,chg:false,sub:null,menu:false,hist:null,tourId:null,tm:null,tnew:{name:'',type:'IPL',overs:'10'}};}
 let ui=freshUi();
 function save(){if(!M)return;syncSoon();try{localStorage.setItem(KEY,JSON.stringify(M));}catch(e){}livePush();}
 
@@ -829,28 +938,324 @@ function saveTeam(k,quiet){
   return id;
 }
 
+/* ---------- tournaments ----------
+   A tournament is a set of saved teams plus a schedule of fixtures that you build and order yourself.
+   Playing a fixture opens the normal match setup for those two teams. When the match ends, its result
+   is filed against the fixture and the running scores between teams update. */
+const TOURKEY='cricketscorer.tours.v1';
+const TT={IPL:'IPL Tournament',Custom:'Custom Overs Tournament',WTC:'World Test Championship'};
+let TOURS=[];
+function persistTours(){try{localStorage.setItem(TOURKEY,JSON.stringify(TOURS));}catch(e){}}
+function loadTours(){try{const t=JSON.parse(localStorage.getItem(TOURKEY)||'null');if(Array.isArray(t)) TOURS=t.filter(x=>x&&x.id&&Array.isArray(x.teams)&&Array.isArray(x.fixtures));}catch(e){}}
+function tourSave(T){
+  const i=TOURS.findIndex(x=>x.id===T.id);if(i>=0) TOURS[i]=T;else TOURS.push(T);
+  persistTours();syncSoon();const json=JSON.stringify(T);remote(db=>db.doc('tournaments/'+T.id).set({json:json}));
+}
+function tourDelete(id){TOURS=TOURS.filter(x=>x.id!==id);persistTours();syncSoon();remote(db=>db.doc('tournaments/'+id).delete());}
+function curTour(){return TOURS.find(t=>t.id===ui.tourId)||null;}
+function tName(T,id){const t=T.teams.find(x=>x.id===id);return t?t.name:'Team';}
+function tourStages(T){return T.type==='WTC'?['Test','Final']:['League match','Qualifier 1','Eliminator','Qualifier 2','Semi-final','Final'];}
+function tourFmt(T){return T.type==='IPL'?'IPL':T.type==='WTC'?'Test':'Custom';}
+function fixInfo(fx){
+  if(!fx) return null;
+  const T=TOURS.find(x=>x.id===fx.tid),f=T&&T.fixtures.find(x=>x.id===fx.fid);
+  return f?{T:T,f:f}:null;
+}
+function tourDesc(T){
+  if(T.type==='IPL') return '20 overs a side, 16-player squads with an impact player.';
+  if(T.type==='Custom') return T.overs+' overs a side.';
+  return 'Test matches over four innings.';
+}
+function tlog(T,text){T.log=T.log||[];T.log.push({at:new Date().toISOString(),text:text});if(T.log.length>300) T.log.splice(0,T.log.length-300);}
+function fmtDate(iso){try{const d=new Date(iso);return isNaN(d)?'':d.toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'});}catch(e){return '';}}
+const CATS=[['all','All matches'],['tour','Tournament match'],['reg','Regular match']];
+function catBtns(act,cur){return '<div class="seg" style="margin-top:8px">'+CATS.map(c=>'<button class="opt" data-act="'+act+'" data-v="'+c[0]+'" aria-pressed="'+(cur===c[0])+'">'+c[1]+'</button>').join('')+'</div>';}
+function catOk(r,f){return f==='tour'?!!r.tn:f==='reg'?!r.tn:true;}
+function tourFinished(T){return T.finished===true||(T.fixtures.length>0&&T.fixtures.every(f=>f.done));}
+function tourSummaryHtml(T){
+  const pairs=tourPairs(T).filter(g=>g.played>0),played=T.fixtures.filter(f=>f.done).length;
+  const rows=tourTable(T);
+  const top=rows.length&&rows[0].w>0?'<div class="line"><b>Most wins</b> '+esc(rows[0].name)+' ('+plural(rows[0].w,'win')+')</div>':'';
+  const live=T.fixtures.filter(f=>f.live&&!f.done).map(f=>esc(tName(T,f.a))+' v '+esc(tName(T,f.b))).join(', ');
+  return (pairs.length?pairs.map(g=>{
+      const extra=[g.ties?plural(g.ties,'tie'):'',g.draws?plural(g.draws,'draw'):''].filter(Boolean).join(', ');
+      return '<div class="line"><b>'+esc(tName(T,g.a))+' '+g.wa+'&ndash;'+g.wb+' '+esc(tName(T,g.b))+'</b> <span class="muted">'+g.played+' of '+g.total+' played'+(extra?' &middot; '+extra:'')+'</span></div>';
+    }).join(''):'<div class="line">No matches played yet.</div>')+
+    (live?'<div class="line"><b>In progress</b> '+live+'</div>':'')+top+
+    '<div class="line muted">'+played+' of '+plural(T.fixtures.length,'fixture')+' played</div>';
+}
+function genFixtures(T,rounds){
+  const ids=T.teams.map(t=>t.id),out=[];
+  if(T.type==='WTC'){
+    for(let i=0;i<ids.length;i++) for(let j=i+1;j<ids.length;j++) for(let k=1;k<=rounds;k++)
+      out.push({id:newId('f'),a:ids[i],b:ids[j],label:'Test '+k+' of '+rounds,done:false,result:null});
+  }else{
+    for(let r=1;r<=rounds;r++) for(let i=0;i<ids.length;i++) for(let j=i+1;j<ids.length;j++)
+      out.push({id:newId('f'),a:r%2?ids[i]:ids[j],b:r%2?ids[j]:ids[i],label:'League match'+(rounds>1?' (round '+r+')':''),done:false,result:null});
+  }
+  return out;
+}
+/* No points: each pair of teams just has a running score of wins, e.g. 3-1. */
+function tourPairs(T){
+  const map={},list=[];
+  T.fixtures.forEach(f=>{
+    const key=[f.a,f.b].sort().join('|');
+    let g=map[key];
+    if(!g){g={a:f.a,b:f.b,wa:0,wb:0,ties:0,draws:0,played:0,total:0,fx:[]};map[key]=g;list.push(g);}
+    g.total++;g.fx.push(f);
+    if(!f.done||!f.result) return;
+    g.played++;
+    const w=f.result.win;
+    if(w==='tie') g.ties++;
+    else if(w==='draw') g.draws++;
+    else{const winner=w==='a'?f.a:f.b;if(winner===g.a) g.wa++;else g.wb++;}
+  });
+  return list;
+}
+function tourTable(T){
+  const rows={};
+  T.teams.forEach(t=>{rows[t.id]={id:t.id,name:t.name,p:0,w:0,l:0,t:0,d:0};});
+  T.fixtures.forEach(f=>{
+    if(!f.done||!f.result) return;
+    const A=rows[f.a],B=rows[f.b];if(!A||!B) return;
+    A.p++;B.p++;
+    const w=f.result.win;
+    if(w==='a'||w==='b'){const W=w==='a'?A:B,L=w==='a'?B:A;W.w++;L.l++;}
+    else if(w==='tie'){A.t++;B.t++;}
+    else{A.d++;B.d++;}
+  });
+  return Object.keys(rows).map(k=>rows[k]).sort((a,b)=>b.w-a.w||a.l-b.l||a.name.localeCompare(b.name));
+}
+/* Called when a match ends: files the result against its fixture. */
+function tourRecord(A,out,rec){
+  if(!M||!M.tour||!out) return;
+  const T=TOURS.find(x=>x.id===M.tour.tid),f=T&&T.fixtures.find(x=>x.id===M.tour.fid);
+  if(!f) return;
+  const win=out.drawn?'draw':out.win===0?'a':out.win===1?'b':'tie';
+  f.done=true;f.live=false;
+  f.result={win:win,text:out.text,rec:M.recId,at:rec.at,toss:rec.toss,scores:rec.scores,summary:rec.summary};
+  tlog(T,'Result: '+tName(T,f.a)+' v '+tName(T,f.b)+' ('+f.label+'): '+out.text);
+  tourSave(T);
+}
+function tourAbandon(){
+  if(!M||!M.tour||M.recKey) return;
+  const T=TOURS.find(x=>x.id===M.tour.tid),f=T&&T.fixtures.find(x=>x.id===M.tour.fid);
+  if(f&&f.live&&!f.done){f.live=false;tlog(T,'Match stopped before a result: '+tName(T,f.a)+' v '+tName(T,f.b));tourSave(T);}
+}
+/* If the last ball is undone so the match is no longer finished, the fixture goes back to being unplayed. */
+function tourUndo(){
+  if(!M||!M.tour) return;
+  const T=TOURS.find(x=>x.id===M.tour.tid),f=T&&T.fixtures.find(x=>x.id===M.tour.fid);
+  if(f&&f.done&&f.result&&f.result.rec===M.recId){f.done=false;f.live=true;f.result=null;tlog(T,'Result removed (last ball undone): '+tName(T,f.a)+' v '+tName(T,f.b));tourSave(T);}
+}
+function fixBanner(){
+  const s=ui.setup,i=s.fixture?fixInfo(s.fixture):null;
+  if(!i) return '';
+  return '<section class="panel pad"><h3>Tournament match</h3><p class="big" style="margin-bottom:2px">'+esc(tName(i.T,i.f.a))+' v '+esc(tName(i.T,i.f.b))+'</p>'+
+    '<p class="muted" style="margin:0">'+esc(i.T.name)+' &middot; '+esc(i.f.label)+'. Team A and Team B are set for this fixture. Pick the players and do the toss.</p>'+
+    '<div class="actions"><button class="btn small" data-act="fix-unlink">Not a tournament match</button></div></section>';
+}
+function tourPlay(T,f){
+  const s=freshSetup();ui.setup=s;ui.screen='setup';ui.top=true;ui.pickK=null;ui.teamK=null;
+  s.fmt=tourFmt(T);s.overs=T.type==='IPL'?'20':T.type==='Custom'?String(T.overs):'';
+  s.fixture={tid:T.id,fid:f.id};
+  [f.a,f.b].forEach((id,k)=>{
+    const t=LIB.teams.find(x=>x.id===id);
+    if(t) pickTeam(String(k),id);else s.slots[k].name=tName(T,id);
+  });
+}
+function tourListHtml(){
+  const n=ui.tnew;
+  const types=['IPL','Custom','WTC'].map(x=>'<button class="opt" data-act="tour-type" data-v="'+x+'" aria-pressed="'+(n.type===x)+'">'+TT[x]+'</button>').join('');
+  const active=TOURS.filter(T=>!tourFinished(T)),nFin=TOURS.length-active.length;
+  const items=active.slice().sort((a,b)=>String(b.at).localeCompare(String(a.at))).map(T=>{
+    const armed=ui.armed==='to'+T.id;
+    return '<div class="tcard"><div class="name">'+esc(T.name)+' <span class="count">'+esc(TT[T.type])+'</span></div><div class="note">'+plural(T.teams.length,'team')+'</div>'+
+      '<div style="margin:6px -14px 0">'+tourSummaryHtml(T)+'</div>'+
+      '<div class="actions"><button class="btn small primary" data-act="tour-open" data-id="'+esc(T.id)+'">Open</button>'+
+      '<button class="btn small'+(armed?' armed':' danger')+'" data-act="'+(armed?'tour-del':'tour-del-arm')+'" data-id="'+esc(T.id)+'">'+(armed?'Confirm remove':'Remove')+'</button></div></div>';
+  }).join('');
+  return '<section class="panel pad"><h1>Tournaments</h1><p class="muted" style="margin-top:0">Add your teams, build the schedule, then play each fixture as a normal match. Every result is saved and the running score between teams is tracked, for example 3-1.</p>'+
+    '<label class="field"><span>Tournament name</span><input id="tourname" data-f="tname" value="'+esc(n.name)+'" maxlength="50" autocomplete="off" placeholder="e.g. Summer League"></label>'+
+    '<div class="field"><span>Type</span><div class="opts">'+types+'</div></div>'+
+    (n.type==='Custom'?'<label class="field"><span>Overs per innings</span><input id="tourovers" data-f="tovers" type="number" inputmode="numeric" min="1" max="90" value="'+esc(n.overs)+'" placeholder="Enter overs"></label>':'')+
+    '<p class="note">'+esc(n.type==='IPL'?tourDesc({type:'IPL'}):n.type==='WTC'?tourDesc({type:'WTC'}):'Any number of overs you choose.')+' Results are kept as wins between teams, for example 3-1.</p>'+
+    '<div class="actions"><button class="btn primary" data-act="tour-create">Create tournament</button></div></section>'+
+    '<section class="panel"><h3>In progress <em>'+active.length+'</em></h3>'+(items||'<div class="empty">No tournaments in progress.</div>')+'</section>'+
+    (nFin?'<p class="note">'+plural(nFin,'finished tournament')+' can be found under Results in the menu (the three dots).</p>':'');
+}
+function fixRowHtml(T,f,i){
+  const st=f.done&&f.result?'<span class="sub">'+esc(f.label)+' &middot; <b>'+esc(f.result.text)+'</b></span>'+((f.result.scores||[]).length?'<span class="sub">'+f.result.scores.map(esc).join(' &middot; ')+'</span>':''):'<span class="sub">'+esc(f.label)+' &middot; '+(f.live?'in progress':'not played')+'</span>';
+  return '<div class="fixrow"><div class="fx"><span class="name">'+esc(tName(T,f.a))+' v '+esc(tName(T,f.b))+'</span>'+st+'</div><div class="fxb">'+
+    (f.done?(f.result&&f.result.rec&&HIST.some(x=>x.id===f.result.rec)?'<button class="btn small" data-act="hist-view" data-from="close" data-id="'+esc(f.result.rec)+'">Scorecard</button>':''):'<button class="btn small primary" data-act="fix-play" data-id="'+esc(f.id)+'">Play</button>')+
+    '<button class="btn small" data-act="fix-move" data-i="'+i+'" data-d="-1" aria-label="Move up"'+(i===0?' disabled':'')+'>&#9650;</button>'+
+    '<button class="btn small" data-act="fix-move" data-i="'+i+'" data-d="1" aria-label="Move down"'+(i===T.fixtures.length-1?' disabled':'')+'>&#9660;</button>'+
+    '<button class="btn small danger" data-act="fix-del" data-id="'+esc(f.id)+'" aria-label="Remove fixture">&times;</button></div></div>';
+}
+function tourResultsHtml(T){
+  const wtc=T.type==='WTC',rows=tourTable(T),pairs=tourPairs(T);
+  if(!T.teams.length) return '<div class="empty">Add teams to see results.</div>';
+  const pr=pairs.map(g=>{
+    const na=tName(T,g.a),nb=tName(T,g.b);
+    const extra=[g.ties?plural(g.ties,'tie'):'',g.draws?plural(g.draws,'draw'):''].filter(Boolean).join(', ');
+    let lead=g.played===0?'Not started':g.wa===g.wb?(g.played===g.total?'Series level':'Level'):(g.wa>g.wb?na:nb)+(g.played===g.total?' won the series':' lead');
+    return '<div class="rowline" style="align-items:flex-start"><div style="flex:1;min-width:0"><span class="name">'+esc(na)+' '+g.wa+'&ndash;'+g.wb+' '+esc(nb)+'</span><span class="sub">'+esc(lead)+(extra?' &middot; '+extra:'')+'</span></div><span class="count">'+g.played+' of '+g.total+' played</span></div>';
+  }).join('');
+  const body=rows.map(r=>'<tr><td><span class="name">'+esc(r.name)+'</span></td><td class="n">'+r.p+'</td><td class="n"><b>'+r.w+'</b></td><td class="n">'+r.l+'</td><td class="n">'+r.t+'</td>'+(wtc?'<td class="n">'+r.d+'</td>':'')+'</tr>').join('');
+  return (pr?'<div class="lab" style="padding:4px 14px 0">Between teams</div>'+pr:'<div class="empty">Results appear here once matches are played.</div>')+
+    '<div class="lab" style="padding:12px 14px 0">Each team\'s record</div><div class="tbl-wrap"><table><thead><tr><th>Team</th><th>P</th><th>W</th><th>L</th><th>T</th>'+(wtc?'<th>D</th>':'')+'</tr></thead><tbody>'+body+'</tbody></table></div>';
+}
+function tourLogHtml(T){
+  const L=(T.log||[]).slice(-40).reverse();
+  if(!L.length) return '<div class="empty">Nothing yet.</div>';
+  return L.map(e=>{let d='';try{d=new Date(e.at).toLocaleString(undefined,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});}catch(x){}return '<div class="line"><b>'+esc(d)+'</b> '+esc(e.text)+'</div>';}).join('');
+}
+function tourDetailHtml(T){
+  const done=T.fixtures.filter(f=>f.done).length,unplayed=T.fixtures.length-done;
+  const used=id=>T.fixtures.some(f=>f.a===id||f.b===id);
+  const teams=T.teams.map(t=>'<div class="rowline"><span class="name" style="flex:1;min-width:0">'+esc(t.name)+'</span><button class="btn small danger" data-act="tm-team-remove" data-id="'+esc(t.id)+'" aria-label="Remove '+esc(t.name)+'"'+(used(t.id)?' disabled title="Remove its fixtures first"':'')+'>&times;</button></div>').join('');
+  const armed=ui.armed==='fc';
+  return '<div class="actions" style="margin-top:0"><button class="btn small" data-act="tour-back">&larr; All tournaments</button></div>'+
+    '<section class="panel pad"><h1>'+esc(T.name)+'</h1><p class="muted" style="margin:0"><b>'+esc(TT[T.type])+'</b>. '+esc(tourDesc(T))+'</p>'+
+      '<p class="note"><b>'+(tourFinished(T)?'Finished. It is listed under Results in the menu.':'In progress.')+'</b></p>'+
+      '<div class="actions">'+(T.finished===true?'<button class="btn small" data-act="tour-reopen">Reopen tournament</button>':(tourFinished(T)?'':'<button class="btn small" data-act="tour-finish">Mark as finished</button>'))+'</div></section>'+
+    '<section class="panel"><h3>Teams <em>'+T.teams.length+'</em></h3>'+(teams||'<div class="empty">No teams yet. Press Add teams to choose from your saved teams.</div>')+
+      '<div class="actions" style="padding:10px 14px 14px;margin-top:0"><button class="btn primary" data-act="tm-open" data-v="teams">Add teams</button></div></section>'+
+    '<section class="panel"><h3>Schedule <em>'+done+' of '+T.fixtures.length+' played</em></h3>'+
+      (T.fixtures.length?T.fixtures.map((f,i)=>fixRowHtml(T,f,i)).join(''):'<div class="empty">No fixtures yet. Press Add schedule to set who plays whom.</div>')+
+      '<div class="actions" style="padding:10px 14px 14px;margin-top:0"><button class="btn primary" data-act="tm-open" data-v="sched"'+(T.teams.length<2?' disabled':'')+'>Add schedule</button>'+
+      (unplayed?'<button class="btn small'+(armed?' armed':' danger')+'" data-act="'+(armed?'fix-clear':'fix-clear-arm')+'">'+(armed?'Tap again to clear':'Clear unplayed')+'</button>':'')+'</div>'+
+      (T.teams.length<2?'<p class="note" style="padding:0 14px 12px">Add at least 2 teams first.</p>':'')+'</section>'+
+    '<section class="panel"><h3>Results</h3>'+tourResultsHtml(T)+'</section>'+
+    '<section class="panel"><h3>Saved activity <em>'+(T.log||[]).length+'</em></h3>'+tourLogHtml(T)+'</section>';
+}
+function toursHtml(){
+  const T=ui.tourId?curTour():null;
+  return '<div class="wrap">'+topNav()+'<div class="stack">'+(T?tourDetailHtml(T):tourListHtml())+'</div></div>';
+}
+function tmTeamsListHtml(T){
+  const q=(ui.tm.q||'').trim().toLowerCase();
+  if(!LIB.teams.length) return '<div class="empty">You have no saved teams yet. Create them in Players &amp; teams first.</div>';
+  const list=LIB.teams.filter(t=>!q||t.name.toLowerCase().indexOf(q)>=0);
+  if(!list.length) return '<div class="empty">No saved teams match "'+esc(ui.tm.q||'')+'".</div>';
+  return list.map(t=>{
+    const on=T.teams.some(x=>x.id===t.id),n=t.playerIds.filter(i=>libName(i)!=null).length;
+    return '<div class="prow'+(on?' on':'')+'"><span class="pn">'+esc(t.name)+'<span class="sub">'+plural(n,'player')+'</span></span><button class="btn small'+(on?'':' primary')+'" data-act="tm-team-toggle" data-id="'+esc(t.id)+'" aria-label="'+(on?'Remove ':'Add ')+esc(t.name)+'">'+(on?'Remove':'Add')+'</button></div>';
+  }).join('');
+}
+function tourModal(){
+  const T=curTour(),m=ui.tm;
+  if(!T) return '';
+  if(m.kind==='teams') return '<div class="scrim" data-act="tm-close-bg"><div class="sheet" role="dialog" aria-modal="true" aria-label="Add teams">'+
+    '<h2>Add teams</h2><p class="muted" style="margin:0"><b>'+plural(T.teams.length,'team')+'</b> in this tournament. Search your saved teams and press Add.</p>'+
+    '<input class="searchbox" id="tmsearch" type="search" data-f="tmsearch" value="'+esc(m.q||'')+'" placeholder="Search teams" autocomplete="off" aria-label="Search teams">'+
+    '<div class="plist" id="tmlist">'+tmTeamsListHtml(T)+'</div>'+
+    '<div class="actions" style="margin-top:18px"><button class="btn primary" data-act="tm-close">Done</button></div></div></div>';
+  const wtc=T.type==='WTC',n=T.teams.length,pairs=n*(n-1)/2;
+  const rounds=wtc?[1,2,3,4,5]:[1,2];
+  const roundBtns=rounds.map(r=>'<button class="opt" data-act="sched-rounds" data-v="'+r+'" aria-pressed="'+(m.rounds===r)+'">'+(wtc?plural(r,'Test'):(r===1?'Once':'Twice'))+'</button>').join('');
+  const sel=(f,val)=>'<select data-f="tm-'+f+'" aria-label="Team '+f.toUpperCase()+'"><option value="">Choose team</option>'+T.teams.map(t=>'<option value="'+esc(t.id)+'"'+(val===t.id?' selected':'')+'>'+esc(t.name)+'</option>').join('')+'</select>';
+  const stages=tourStages(T).map(s=>'<option value="'+esc(s)+'"'+(m.stage===s?' selected':'')+'>'+esc(s)+'</option>').join('');
+  return '<div class="scrim" data-act="tm-close-bg"><div class="sheet" role="dialog" aria-modal="true" aria-label="Add schedule">'+
+    '<h2>Add schedule</h2><p class="muted" style="margin:0">Set how the teams play each other. Fixtures go on the end of the schedule. You can reorder them and play them in any order.</p>'+
+    '<div class="lab">'+(wtc?'Tests in each series':'Each team plays each other')+'</div><div class="opts">'+roundBtns+'</div>'+
+    '<div class="actions"><button class="btn primary" data-act="sched-gen"'+(n<2?' disabled':'')+'>Create '+plural(pairs*m.rounds,'fixture')+'</button></div>'+
+    '<div class="lab">Or add one fixture</div>'+
+    '<div class="grid2"><label class="field"><span>Team A</span>'+sel('a',m.a)+'</label><label class="field"><span>Team B</span>'+sel('b',m.b)+'</label></div>'+
+    '<label class="field" style="margin-top:12px"><span>Stage</span><select data-f="tm-stage" aria-label="Stage">'+stages+'</select></label>'+
+    '<div class="actions"><button class="btn" data-act="sched-add">Add fixture</button></div>'+
+    '<div class="actions" style="margin-top:18px"><button class="btn primary" data-act="tm-close">Done</button></div></div></div>';
+}
+function actTour(a,d){
+  const T=curTour();
+  switch(a){
+    case 'tour-type':ui.tnew.type=d.v;return true;
+    case 'tour-create':{
+      const n=ui.tnew,name=normName(n.name);
+      if(!name){toast('Give the tournament a name');return false;}
+      let overs=null;
+      if(n.type==='Custom'){overs=parseInt(n.overs,10);if(!(overs>=1)){toast('Enter the overs per innings');return false;}overs=clamp(overs,1,90);}
+      const t={id:newId('o'),name:name,type:n.type,overs:overs,teams:[],fixtures:[],at:new Date().toISOString()};
+      tlog(t,'Tournament created: '+TT[t.type]);tourSave(t);ui.tourId=t.id;ui.tnew={name:'',type:n.type,overs:n.overs};ui.top=true;return true;}
+    case 'tour-open':ui.tourId=d.id;ui.top=true;return true;
+    case 'tour-finish':if(T){T.finished=true;tlog(T,'Tournament marked as finished');tourSave(T);}return true;
+    case 'tour-reopen':if(T){T.finished=false;tlog(T,'Tournament reopened');tourSave(T);}return true;
+    case 'tour-back':ui.tourId=null;ui.top=true;return true;
+    case 'tour-del-arm':ui.armed='to'+d.id;return true;
+    case 'tour-del':tourDelete(d.id);if(ui.tourId===d.id) ui.tourId=null;return true;
+    case 'tm-open':if(!T) return false;ui.tm={kind:d.v,q:'',rounds:1,a:'',b:'',stage:tourStages(T)[0]};return true;
+    case 'tm-close':ui.tm=null;return true;
+    case 'tm-team-toggle':{
+      if(!T) return false;
+      const i=T.teams.findIndex(x=>x.id===d.id);
+      if(i>=0){
+        if(T.fixtures.some(f=>f.a===d.id||f.b===d.id)){toast('Remove that team\'s fixtures first');return false;}
+        tlog(T,'Team removed: '+T.teams[i].name);T.teams.splice(i,1);
+      }else{const lt=LIB.teams.find(x=>x.id===d.id);if(lt){T.teams.push({id:lt.id,name:lt.name});tlog(T,'Team added: '+lt.name);}}
+      tourSave(T);
+      const l=$('tmlist');if(l&&ui.tm) l.innerHTML=tmTeamsListHtml(T);
+      return false;}
+    case 'tm-team-remove':{
+      if(!T) return false;
+      if(T.fixtures.some(f=>f.a===d.id||f.b===d.id)){toast('Remove that team\'s fixtures first');return false;}
+      tlog(T,'Team removed: '+tName(T,d.id));T.teams=T.teams.filter(x=>x.id!==d.id);tourSave(T);return true;}
+    case 'sched-rounds':ui.tm.rounds=+d.v;return true;
+    case 'sched-gen':{
+      if(!T||T.teams.length<2) return false;
+      const add=genFixtures(T,ui.tm.rounds);T.finished=false;T.fixtures=T.fixtures.concat(add);tlog(T,'Schedule added: '+plural(add.length,'fixture')+(T.type==='WTC'?' ('+plural(ui.tm.rounds,'Test')+' per series)':ui.tm.rounds===2?' (each team plays the others twice)':' (each team plays the others once)'));tourSave(T);
+      toast('Added '+plural(add.length,'fixture'));return true;}
+    case 'sched-add':{
+      const m=ui.tm;
+      if(!T||!m.a||!m.b){toast('Choose both teams');return false;}
+      if(m.a===m.b){toast('Choose two different teams');return false;}
+      T.finished=false;T.fixtures.push({id:newId('f'),a:m.a,b:m.b,label:m.stage||tourStages(T)[0],done:false,result:null});tlog(T,'Fixture added: '+tName(T,m.a)+' v '+tName(T,m.b)+' ('+(m.stage||tourStages(T)[0])+')');tourSave(T);
+      toast(tName(T,m.a)+' v '+tName(T,m.b)+' added');return true;}
+    case 'fix-play':{const f=T&&T.fixtures.find(x=>x.id===d.id);if(f) tourPlay(T,f);return true;}
+    case 'fix-unlink':ui.setup.fixture=null;return true;
+    case 'fix-move':{
+      if(!T) return false;
+      const i=+d.i,j=i+ +d.d;
+      if(j>=0&&j<T.fixtures.length){const t=T.fixtures[i];T.fixtures[i]=T.fixtures[j];T.fixtures[j]=t;tourSave(T);}
+      return true;}
+    case 'fix-del':if(T){const f=T.fixtures.find(x=>x.id===d.id);if(f) tlog(T,'Fixture removed: '+tName(T,f.a)+' v '+tName(T,f.b)+' ('+f.label+')');T.fixtures=T.fixtures.filter(x=>x.id!==d.id);tourSave(T);}return true;
+    case 'fix-clear-arm':ui.armed='fc';return true;
+    case 'fix-clear':if(T){tlog(T,'Unplayed fixtures cleared');T.fixtures=T.fixtures.filter(x=>x.done);tourSave(T);}return true;
+  }
+  return null;
+}
+
 /* ---------- setup / squads screens ---------- */
 function topNav(){
-  const t=[['setup','New match'],['squads','Players & teams']].map(x=>'<button class="tab" role="tab" aria-selected="'+(ui.screen===x[0])+'" data-act="screen" data-v="'+x[0]+'">'+esc(x[1])+'</button>').join('');
-  return '<div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div><div class="tabs two" role="tablist">'+t+'</div>';
+  const t=[['setup','New match'],['squads','Players & teams'],['tours','Tournaments']].map(x=>'<button class="tab" role="tab" aria-selected="'+(ui.screen===x[0])+'" data-act="screen" data-v="'+x[0]+'">'+esc(x[1])+'</button>').join('');
+  return '<div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div><div class="tabs three" role="tablist">'+t+'</div>';
 }
 function storeNote(){
   return '<p class="note">'+(LIB.mode==='db'?'Players, teams and the live match are shared with every device that opens this page, and kept between sessions.':LIB.mode==='loading'?'Connecting to your saved players...':'Players and teams are saved in this browser only.')+'</p>';
+}
+/* The toss is a bat with two sides. Internally 'heads' is Mountains and 'tails' is Rivers, which keeps older saved matches working. */
+function sideName(v){return v==='tails'||v==='rivers'?'Rivers':'Mountains';}
+function batFace(side){
+  const ridge=side==='heads';
+  /* The ridged (triangular) back of the bat is Mountains. The flat face is Rivers. */
+  const blade=ridge
+    ?'<rect x="14" y="50" width="46" height="104" rx="9" fill="#E8C190" stroke="#8A5A1E" stroke-width="2"/><path d="M37 52 L58 152 L37 152 Z" fill="#F4D7AE" opacity=".9"/><path d="M37 52 L16 152 L37 152 Z" fill="#CFA06A" opacity=".9"/><line x1="37" y1="52" x2="37" y2="153" stroke="#8A5A1E" stroke-width="1.6"/><rect x="14" y="50" width="46" height="104" rx="9" fill="none" stroke="#8A5A1E" stroke-width="2"/>'
+    :'<rect x="14" y="50" width="46" height="104" rx="9" fill="#E8C190" stroke="#8A5A1E" stroke-width="2"/><line x1="24" y1="70" x2="24" y2="140" stroke="#D2A66F" stroke-width="1"/><line x1="37" y1="62" x2="37" y2="146" stroke="#D2A66F" stroke-width="1"/><line x1="50" y1="70" x2="50" y2="140" stroke="#D2A66F" stroke-width="1"/>';
+  return '<svg viewBox="0 0 74 158" aria-hidden="true"><rect x="31" y="2" width="12" height="52" rx="5" fill="#2B2118"/><rect x="31" y="14" width="12" height="2" fill="#5A4636"/><rect x="31" y="22" width="12" height="2" fill="#5A4636"/><rect x="31" y="30" width="12" height="2" fill="#5A4636"/>'+blade+'</svg>';
 }
 function tn(i){return normName(ui.setup.slots[i].name)||('Team '+'AB'[i]);}
 function tnSpan(i){return '<span data-tn="'+i+'">'+esc(tn(i))+'</span>';}
 function tossHtml(){
   const s=ui.setup,flip=s.tossMode==='flip',c=s.coin;
-  const mode=[['flip','Flip a coin here'],['manual','Toss already done']].map(x=>'<button class="opt" data-act="toss-mode" data-v="'+x[0]+'" aria-pressed="'+(s.tossMode===x[0])+'">'+x[1]+'</button>').join('');
+  const mode=[['flip','Bat Flip'],['manual','Toss already done']].map(x=>'<button class="opt" data-act="toss-mode" data-v="'+x[0]+'" aria-pressed="'+(s.tossMode===x[0])+'">'+x[1]+'</button>').join('');
   let body='';
   if(flip){
     const callers=[0,1].map(i=>'<button class="opt" data-act="toss-caller" data-v="'+i+'" aria-pressed="'+(s.caller===String(i))+'">'+tnSpan(i)+'</button>').join('');
-    const calls=['heads','tails'].map(x=>'<button class="opt" data-act="toss-call" data-v="'+x+'" aria-pressed="'+(s.call===x)+'">'+x[0].toUpperCase()+x.slice(1)+'</button>').join('');
+    const calls=['heads','tails'].map(x=>'<button class="opt" data-act="toss-call" data-v="'+x+'" aria-pressed="'+(s.call===x)+'">'+sideName(x)+'</button>').join('');
     const cls=c.state==='flipping'?'flip-'+c.result:c.state==='done'?'rest-'+c.result:'';
-    body+='<div class="lab">Who calls</div><div class="opts">'+callers+'</div><div class="lab">The call</div><div class="opts">'+calls+'</div>'+
-      '<div class="coinwrap"><div class="coin '+cls+'" role="img" aria-label="'+(c.state==='done'?'Coin landed '+c.result:'Coin')+'"><div class="face heads">H</div><div class="face tails">T</div></div></div>'+
-      '<div class="tossresult">'+(c.state==='done'?'<p class="big">'+c.result[0].toUpperCase()+c.result.slice(1)+'</p><p>'+tnSpan(+s.caller)+' called '+s.call+'. <b>'+tnSpan(+s.winner)+'</b> won the toss.</p>':c.state==='flipping'?'<p class="muted">Flipping...</p>':'<p class="muted">Tap the coin button to toss.</p>')+'</div>'+
-      '<div class="actions" style="justify-content:center"><button class="btn primary" data-act="toss-flip"'+(c.state==='flipping'?' disabled':'')+'>'+(c.state==='done'?'Flip again':'Flip coin')+'</button></div>';
+    body+='<div class="lab">Who calls</div><div class="opts">'+callers+'</div><div class="lab">The call</div><div class="opts">'+calls+'</div><p class="note">Mountains is the triangular ridged side of the bat. Rivers is the flat side.</p>'+
+      '<div class="batwrap"><div class="batflip '+cls+'" role="img" aria-label="'+(c.state==='done'?'The bat landed on '+sideName(c.result):'Bat to flip')+'"><div class="face mountains">'+batFace('heads')+'</div><div class="face rivers">'+batFace('tails')+'</div></div></div>'+
+      '<div class="tossresult">'+(c.state==='done'?'<p class="big">'+sideName(c.result)+'</p><p>'+tnSpan(+s.caller)+' called '+sideName(s.call)+'. <b>'+tnSpan(+s.winner)+'</b> won the toss.</p>':c.state==='flipping'?'<p class="muted">Flipping...</p>':'<p class="muted">Tap Flip bat to toss.</p>')+'</div>'+
+      '<div class="actions" style="justify-content:center"><button class="btn primary" data-act="toss-flip"'+(c.state==='flipping'?' disabled':'')+'>'+(c.state==='done'?'Flip again':'Flip bat')+'</button></div>';
   }else{
     body+='<div class="lab">Toss won by</div><div class="opts">'+[0,1].map(i=>'<button class="opt" data-act="toss-winner" data-v="'+i+'" aria-pressed="'+(s.winner===String(i))+'">'+tnSpan(i)+'</button>').join('')+'</div>';
   }
@@ -864,15 +1269,16 @@ function defaultMaxPer(fmt,overs){if(fmt==='Test') return null;if(fmt==='T20'||f
 function renderSetup(){
   const s=ui.setup;
   if(ui.screen==='squads') return squadsHtml();
+  if(ui.screen==='tours') return toursHtml();
   const test=s.fmt==='Test',dm=defaultMaxPer(s.fmt,s.overs);
-  const teamCard=k=>'<section class="panel pad"><h3>Team '+'AB'[k]+'</h3>'+pickerHtml(String(k))+'</section>';
+  const teamCard=k=>'<section class="panel pad"><h3>'+tnSpan(k)+'</h3>'+pickerHtml(String(k))+'</section>';
   return '<div class="wrap">'+topNav()+
-  '<section class="panel pad"><h1>New match</h1><p class="muted" style="margin-top:0">Set the overs, pick each squad from your saved players and put them in batting order, then do the toss. Anyone missing can be added on the spot and is saved for next time.</p>'+
+  fixBanner()+'<section class="panel pad"><h1>New match</h1><p class="muted" style="margin-top:0">Set the overs, pick each squad from your saved players and put them in batting order, then do the toss. Anyone missing can be added on the spot and is saved for next time.</p>'+
     storeNote()+
     '<h3 class="stephead" style="margin-top:14px"><b>1</b> Match format</h3>'+
     '<div class="opts" style="margin-top:4px">'+[['T20','T20'],['IPL','IPL'],['ODI','ODI'],['Test','Test'],['Custom','Custom overs']].map(x=>'<button class="opt" data-act="format" data-v="'+x[0]+'" aria-pressed="'+(s.fmt===x[0])+'">'+x[1]+'</button>').join('')+'</div>'+
     '<div class="grid2">'+
-      '<label class="field" style="margin-top:10px"><span>Overs per innings</span><input id="overs" type="number" inputmode="numeric" min="1" max="90" data-s="overs" value="'+(test?'':esc(s.overs))+'"'+(test?' disabled placeholder="No limit"':(s.fmt==='Custom'?' placeholder="Enter overs"':''))+'></label>'+
+      '<label class="field" style="margin-top:10px"><span>Overs per innings</span><input id="overs" type="number" inputmode="numeric" min="1" max="90" data-s="overs" value="'+(test?'':esc(s.overs))+'"'+(test?' disabled placeholder="No limit"':(s.fmt==='Custom'?' placeholder="Enter overs"':''))+(s.fixture&&!test?' disabled':'')+'></label>'+
       '<label class="field" style="margin-top:10px"><span>Max overs per bowler</span><input id="maxper" type="number" inputmode="numeric" min="1" max="90" data-s="maxper" value="'+(test?'':esc(s.maxper))+'" placeholder="'+(test?'No limit':(s.fmt==='Custom'&&!(parseInt(s.overs,10)>0)?'A fifth of the overs':'Default: '+dm))+'"'+(test?' disabled':'')+'></label>'+
     '</div>'+
     '<p class="note">'+(test?'Test match: four innings, no over limit. Each innings ends when the batting side is all out or declares, and bowlers can bowl as many overs as needed.':s.fmt==='IPL'?'IPL: 20 overs an innings, up to 4 overs per bowler, and one impact player per team who can replace a teammate during the match.':s.fmt==='T20'?'T20: 20 overs an innings, up to 4 overs per bowler.':s.fmt==='ODI'?'ODI: 50 overs an innings, up to 10 overs per bowler.':'Type any number of overs. The default limit is a fifth of the innings, rounded up.')+'</p>'+
@@ -892,7 +1298,7 @@ function squadsHtml(){
     const armed=ui.armed==='dt'+t.id;
     const names=t.playerIds.map(libName).filter(Boolean);
     return '<div class="tcard"><div class="name">'+esc(t.name)+' <span class="count">'+names.length+' players</span></div><div class="note">'+(names.length?names.map(esc).join(', '):'No players')+'</div>'+
-      '<div class="actions"><button class="btn small" data-act="edit-team" data-id="'+esc(t.id)+'">Edit</button>'+
+      '<div class="actions"><button class="btn small" data-act="edit-team" data-id="'+esc(t.id)+'">Edit</button><button class="btn small" data-act="copy-team" data-id="'+esc(t.id)+'">Copy</button>'+
       '<button class="btn small'+(armed?' armed':' danger')+'" data-act="'+(armed?'del-team':'del-team-arm')+'" data-id="'+esc(t.id)+'">'+(armed?'Confirm remove':'Remove')+'</button></div></div>';
   }).join('');
   const ed=ui.squads.editor;
@@ -937,12 +1343,15 @@ function startMatch(){
     const base=userMax>0?userMax:defaultMaxPer(s.fmt,overs);
     maxPer=Math.max(base,Math.ceil(overs/(minSize-1)));
   }
+  const fi=s.fixture?fixInfo(s.fixture):null;
+  if(fi&&(s.slots[0].teamId!==fi.f.a||s.slots[1].teamId!==fi.f.b)){toast('This is a tournament match. Team A must be '+tName(fi.T,fi.f.a)+' and Team B '+tName(fi.T,fi.f.b)+'.');return false;}
   if(s.winner===''||!s.choice){toast('Do the toss first, then choose bat or bowl');return false;}
   const winner=+s.winner,choice=s.choice;
   const bat=choice==='bat'?winner:1-winner;
   saveTeam('0',true);saveTeam('1',true);
-  M={v:1,format:s.fmt,maxSubs:s.fmt==='IPL'?1:null,subsLog:[],nInn:test?4:2,overs:overs,maxPer:maxPer,teams:teams,toss:{winner:winner,choice:choice,mode:s.tossMode,caller:+s.caller,call:s.call,result:s.tossMode==='flip'?s.coin.result:null},
+  M={v:1,tour:fi?{tid:fi.T.id,fid:fi.f.id,label:fi.T.name+' · '+fi.f.label}:null,format:s.fmt,maxSubs:s.fmt==='IPL'?1:null,subsLog:[],nInn:test?4:2,overs:overs,maxPer:maxPer,teams:teams,toss:{winner:winner,choice:choice,mode:s.tossMode,caller:+s.caller,call:s.call,result:s.tossMode==='flip'?s.coin.result:null},
      innings:[{bat:bat,bowl:1-bat,openers:null,events:[],declared:false}],cur:0};
+  if(fi){fi.f.live=true;tlog(fi.T,'Match started: '+tName(fi.T,fi.f.a)+' v '+tName(fi.T,fi.f.b)+' ('+fi.f.label+')');tourSave(fi.T);}
   return true;
 }
 
@@ -951,8 +1360,9 @@ function resetToss(){ui.setup.coin={state:'idle',result:''};ui.setup.winner='';u
 function actLib(a,d){
   switch(a){
     case 'screen':ui.screen=d.v;ui.top=true;return true;
+    case 'tour-type':case 'tour-create':case 'tour-open':case 'tour-finish':case 'tour-reopen':case 'tour-back':case 'tour-del-arm':case 'tour-del':case 'tm-open':case 'tm-close':case 'tm-team-toggle':case 'tm-team-remove':case 'sched-rounds':case 'sched-gen':case 'sched-add':case 'fix-play':case 'fix-unlink':case 'fix-move':case 'fix-del':case 'fix-clear-arm':case 'fix-clear':return actTour(a,d)===true;
     case 'preset':ui.setup.overs=String(d.v);ui.setup.fmt=d.v==='20'?'T20':d.v==='50'?'ODI':'Custom';return true;
-    case 'format':{const s=ui.setup;s.fmt=d.v;s.maxper='';if(d.v==='T20'||d.v==='IPL') s.overs='20';else if(d.v==='ODI') s.overs='50';else if(d.v==='Custom') s.overs='';return true;}
+    case 'format':{const s=ui.setup;if(s.fixture) return false;s.fmt=d.v;s.maxper='';if(d.v==='T20'||d.v==='IPL') s.overs='20';else if(d.v==='ODI') s.overs='50';else if(d.v==='Custom') s.overs='';return true;}
     case 'add-player':addPlayerTo(d.k);return true;
     case 'pick-open':ui.pickK=d.k;ui.pickQ='';return true;
     case 'team-open':ui.teamK=d.k;ui.teamQ='';return true;
@@ -970,6 +1380,15 @@ function actLib(a,d){
       return false;}
     case 'save-team':saveTeam(d.k,false);return true;
     case 'clear-editor':ui.squads.editor={teamId:'',name:'',sel:[],newp:''};ui.focus='tn-e';return true;
+    case 'copy-team':{
+      const t=LIB.teams.find(x=>x.id===d.id);if(!t) return true;
+      const base=t.name.replace(/ \(copy( \d+)?\)$/,'').slice(0,28);
+      let name=base+' (copy)',n=2;
+      while(LIB.teams.some(x=>x.name.toLowerCase()===name.toLowerCase())) name=base+' (copy '+(n++)+')';
+      const id=newId('t'),ids=t.playerIds.filter(i=>libName(i)!=null);
+      libPutTeam(id,name,ids,t.capId,t.wkId);
+      ui.squads.editor={teamId:id,name:name,sel:ids.slice(),newp:'',cap:t.capId||'',wk:t.wkId||''};
+      ui.focus='tn-e';ui.top=true;toast('Copied as "'+name+'". Edit it below.');return true;}
     case 'edit-team':{const t=LIB.teams.find(x=>x.id===d.id);if(t){ui.squads.editor={teamId:t.id,name:t.name,sel:t.playerIds.filter(i=>libName(i)!=null),newp:'',cap:t.capId||'',wk:t.wkId||''};ui.focus='tn-e';}return true;}
     case 'del-player-arm':ui.armed='dp'+d.id;return true;
     case 'del-player':libDelPlayer(d.id);return true;
@@ -1271,10 +1690,11 @@ function cardPanels(d){
     '<section class="panel"><h3>'+esc(d.bowl)+' bowling <em>overs-maidens-runs-wickets</em></h3><div class="tbl-wrap"><table><thead><tr><th>Bowler</th><th>O</th><th>M</th><th>R</th><th>W</th><th>Wd</th><th>Nb</th><th>Econ</th></tr></thead><tbody>'+
     (brows||'<tr><td colspan="8" class="muted">No overs bowled yet</td></tr>')+'</tbody></table></div></section>';
 }
+function tossPanel(text){return text?'<section class="panel"><h3>Toss</h3><div class="line" style="border-top:0"><b>'+esc(text)+'.</b></div></section>':'';}
 function cardTab(A){
   const vi=Math.min(ui.view,A.length-1),S=A[vi];
-  if(!S.started) return viewToggle(A)+'<div class="panel pad"><p class="muted">This innings has not started.</p></div>';
-  return viewToggle(A)+cardPanels(cardData(A,vi));
+  if(!S.started) return viewToggle(A)+tossPanel(tossText())+'<div class="panel pad"><p class="muted">This innings has not started.</p></div>';
+  return viewToggle(A)+tossPanel(tossText())+cardPanels(cardData(A,vi));
 }
 function oversTab(A){
   const vi=Math.min(ui.view,A.length-1),S=A[vi],inn=M.innings[vi];
@@ -1301,7 +1721,7 @@ function formatText(){
 }
 function tossText(){
   const t=M.toss;let s='';
-  if(t.mode==='flip'&&t.result) s=M.teams[t.caller].name+' called '+t.call+'. It landed '+t.result+'. ';
+  if(t.mode==='flip'&&t.result) s=M.teams[t.caller].name+' called '+sideName(t.call)+'. It landed on '+sideName(t.result)+'. ';
   return s+M.teams[t.winner].name+' won the toss and chose to '+t.choice+' first';
 }
 function matchTab(A){
@@ -1411,14 +1831,14 @@ function act(a,d){
     case 'end-arm':ui.armed='end';break;
     case 'end-confirm':inn.declared=true;break;
     case 'new-arm':ui.armed='new';break;
-    case 'new-confirm':if(!M.recKey&&M.innings.some(x=>x.events.length)) histRecord(true);clearSaved();M=null;liveClear();ui=freshUi();ui.top=true;render();return;
+    case 'new-confirm':if(!M.recKey&&M.innings.some(x=>x.events.length)) histRecord(true);tourAbandon();clearSaved();M=null;liveClear();ui=freshUi();ui.top=true;render();return;
     case 'copy':{
       const text=summaryText(analyse());
       const fallback=()=>{ui.copyText=text;render();};
       try{navigator.clipboard.writeText(text).then(()=>toast('Summary copied'),fallback);}catch(e){fallback();}
       return;}
   }
-  {const r=matchOutcome(M,analyse());if(r){const k=r.text;if(M.recKey!==k){M.recKey=k;histRecord(false);}}}
+  {const r=matchOutcome(M,analyse());if(r){const k=r.text;if(M.recKey!==k){M.recKey=k;histRecord(false);}}else if(M.recKey){M.recKey=null;tourUndo();}}
   save();render();
 }
 
@@ -1428,7 +1848,7 @@ function render(){
   let ss=null,se=null;
   try{ss=ae.selectionStart;se=ae.selectionEnd;}catch(e){}
   const sy=window.scrollY;
-  $('app').innerHTML=(ui.hist?histHtml():M?renderMatch():renderSetup())+((!M&&!ui.hist&&ui.pickK!=null)?pickModal():'')+((!M&&!ui.hist&&ui.teamK!=null)?teamModal():'');
+  $('app').innerHTML=(ui.hist?histHtml():M?renderMatch():renderSetup())+((!M&&!ui.hist&&ui.pickK!=null)?pickModal():'')+((!M&&!ui.hist&&ui.teamK!=null)?teamModal():'')+((!M&&!ui.hist&&ui.tm)?tourModal():'');
   const want=ui.focus||fid;
   if(want){
     const el=$(want);
@@ -1447,6 +1867,7 @@ document.addEventListener('click',e=>{
   const el=e.target.closest('[data-act]');
   if(!el||el.disabled) return;
   if(el.dataset.act==='wk-cancel-bg'){if(e.target===el){ui.wk=null;render();}return;}
+  if(el.dataset.act==='tm-close-bg'){if(e.target===el){ui.tm=null;render();}return;}
   if(el.dataset.act==='team-close-bg'){if(e.target===el){ui.teamK=null;render();}return;}
   if(el.dataset.act==='pick-close-bg'){if(e.target===el){ui.pickK=null;render();}return;}
   if(el.dataset.act==='sub-cancel-bg'){if(e.target===el){ui.sub=null;render();}return;}
@@ -1456,10 +1877,13 @@ function updateToss(){document.querySelectorAll('[data-tn]').forEach(el=>{el.tex
 document.addEventListener('input',e=>{
   if(e.target.dataset&&e.target.dataset.f==='sync'){SYNC.url=e.target.value.trim();persistSync();return;}
   if(e.target.dataset&&e.target.dataset.f==='psearch'){ui.pickQ=e.target.value;const l=$('plist');if(l&&ui.pickK!=null) l.innerHTML=pickListHtml(ui.pickK);return;}
+  if(e.target.dataset&&e.target.dataset.f==='tmsearch'){if(ui.tm){ui.tm.q=e.target.value;const T=curTour(),l=$('tmlist');if(T&&l) l.innerHTML=tmTeamsListHtml(T);}return;}
   if(e.target.dataset&&e.target.dataset.f==='tsearch'){ui.teamQ=e.target.value;const l=$('tlist');if(l&&ui.teamK!=null) l.innerHTML=teamListHtml(ui.teamK);return;}
   if(M) return;
   const t=e.target,d=t.dataset||{};
   if(d.s){ui.setup[d.s]=t.value;return;}
+  if(d.f==='tname'){ui.tnew.name=t.value;return;}
+  if(d.f==='tovers'){ui.tnew.overs=t.value;return;}
   if(d.f==='name'){pk(d.k).name=t.value;updateToss();}
   else if(d.f==='newp'){if(d.k==='lib') ui.squads.newp=t.value;else pk(d.k).newp=t.value;}
 });
@@ -1467,6 +1891,7 @@ document.addEventListener('change',e=>{
   const t=e.target,d=t.dataset||{};
   if(!M){
     if(d.s){ui.setup[d.s]=t.value;if(d.s==='overs'){const f=ui.setup.fmt;if(f!=='Custom'){ui.setup.fmt=((f==='IPL'||f==='T20')&&t.value==='20')?f:t.value==='20'?'T20':t.value==='50'?'ODI':'Custom';}render();}return;}
+    if(d.f&&d.f.indexOf('tm-')===0&&ui.tm){ui.tm[d.f.slice(3)]=t.value;return;}
     if(d.f==='team'){pickTeam(d.k,t.value);render();}
     else if(d.f==='cap'||d.f==='wkp'){const p=pk(d.k);if(d.f==='cap') p.cap=t.value;else p.wk=t.value;}
     else if(d.f==='tick'){
@@ -1489,7 +1914,7 @@ document.addEventListener('change',e=>{
 });
 document.addEventListener('keydown',e=>{
   const t=e.target,d=t.dataset||{};
-  if(!M&&e.key==='Escape'&&(ui.pickK!=null||ui.teamK!=null)){ui.pickK=null;ui.teamK=null;render();return;}
+  if(!M&&e.key==='Escape'&&(ui.pickK!=null||ui.teamK!=null||ui.tm)){ui.pickK=null;ui.teamK=null;ui.tm=null;render();return;}
   if(!M&&d.f==='newp'&&e.key==='Enter'){e.preventDefault();act('add-player',{k:d.k});return;}
   if(!M||e.metaKey||e.ctrlKey||e.altKey) return;
   const tag=(t.tagName||'').toLowerCase();
@@ -1504,7 +1929,7 @@ document.addEventListener('keydown',e=>{
   else if(e.key==='u') act('undo',{});
 });
 
-loadLib();loadHist();
+loadLib();loadHist();loadTours();
 M=load();
 /* A finished match is not reopened: it is kept in Match history and the app opens normally. Only a half-scored match is resumed. */
 if(M){try{if(matchOutcome(M,analyse())){if(!M.recKey) histRecord(false);clearSaved();M=null;}}catch(e){}}

@@ -1,42 +1,74 @@
 /**
  * CricketScorer - Google Apps Script receiver
  *
+ * Every time anything changes in the app, it sends ALL of its data to this
+ * script and the script rewrites one tab per kind of data:
+ *
+ *   Players        every saved player
+ *   Teams          saved teams with their players, captain and wicketkeeper
+ *   Matches        every finished match: date, teams, toss, scores, result,
+ *                  category (Tournament match / Regular match) and tournament
+ *   Innings        one row per innings: total, wickets, overs, extras, fall of wickets
+ *   Batting        every batter in every innings: runs, balls, 4s, 6s, strike rate, how out
+ *   Bowling        every bowler in every innings: overs, maidens, runs, wickets, wides, no balls, economy
+ *   Live           ball by ball record of the match being scored
+ *   Current match  the match in progress: teams, captains, keepers, toss, score
+ *   Tournaments    every tournament with its status
+ *   Fixtures       every fixture: stage, teams, status, result, scores, date
+ *   Series         the running score between each pair of teams, e.g. 3-1
+ *   Activity       dated log of what was done in each tournament
+ *
  * Setup:
  *  1. Create a Google Sheet, then open Extensions > Apps Script.
  *  2. Replace the default code with this file and save.
  *  3. Deploy > New deployment > type "Web app".
  *     Execute as: Me.   Who has access: Anyone.
- *  4. Copy the web app URL (ends in /exec) and paste it into the app's
- *     Sync URL box (Match history > Sync), or into SYNC_URL in the HTML file.
+ *  4. Copy the web app URL (ends in /exec) and paste it into the app:
+ *     menu (three dots) > Match history > Sync URL.
  *  5. If you change this code later, use Deploy > Manage deployments >
  *     Edit > New version so the same URL keeps working.
  *
- * The app sends everything as JSON in a POST body. Each sync rewrites four tabs:
- *   Players, Teams, Matches, Live
+ * Open the web app URL in a browser to check it is live. It shows when the
+ * last sync arrived and how many rows each tab holds.
  */
+
+var MAX_CELL = 45000; // Google Sheets allows 50,000 characters in a cell.
 
 function doPost(e) {
   var lock = LockService.getScriptLock();
   try {
-    lock.waitLock(20000);
+    lock.waitLock(30000);
     var data = JSON.parse(e.postData.contents);
     if (data.app !== 'CricketScorer') {
       return out_({ ok: false, error: 'Not a CricketScorer payload' });
     }
 
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var tabs = data.tabs;
 
-    writeTab_(ss, 'Players', ['Id', 'Name'], data.players || []);
-    writeTab_(ss, 'Teams', ['Id', 'Team', 'Players'], data.teams || []);
-    writeTab_(ss, 'Matches', data.head || [], data.rows || []);
-    writeTab_(ss, 'Live', data.liveHead || [], data.live || []);
-
-    var meta = ss.getSheetByName('Players');
-    if (meta) {
-      PropertiesService.getScriptProperties().setProperty('lastSync', data.sentAt || new Date().toISOString());
+    // Older versions of the app sent fixed fields instead of a list of tabs.
+    if (!tabs || !tabs.length) {
+      tabs = [
+        { name: 'Players', head: ['Id', 'Name'], rows: data.players || [] },
+        { name: 'Teams', head: ['Id', 'Team', 'Players'], rows: data.teams || [] },
+        { name: 'Matches', head: data.head || [], rows: data.rows || [] },
+        { name: 'Live', head: data.liveHead || [], rows: data.live || [] }
+      ];
     }
 
-    return out_({ ok: true, sentAt: data.sentAt || null });
+    var counts = {};
+    for (var i = 0; i < tabs.length; i++) {
+      var t = tabs[i];
+      if (!t || !t.name) continue;
+      writeTab_(ss, String(t.name), t.head || [], t.rows || []);
+      counts[t.name] = (t.rows || []).length;
+    }
+
+    var props = PropertiesService.getScriptProperties();
+    props.setProperty('lastSync', data.sentAt || new Date().toISOString());
+    props.setProperty('counts', JSON.stringify(counts));
+
+    return out_({ ok: true, sentAt: data.sentAt || null, rows: counts });
   } catch (err) {
     return out_({ ok: false, error: String(err) });
   } finally {
@@ -45,8 +77,15 @@ function doPost(e) {
 }
 
 function doGet() {
-  var last = PropertiesService.getScriptProperties().getProperty('lastSync') || 'never';
-  return out_({ ok: true, app: 'CricketScorer', lastSync: last });
+  var props = PropertiesService.getScriptProperties();
+  var counts = {};
+  try { counts = JSON.parse(props.getProperty('counts') || '{}'); } catch (x) {}
+  return out_({
+    ok: true,
+    app: 'CricketScorer',
+    lastSync: props.getProperty('lastSync') || 'never',
+    rows: counts
+  });
 }
 
 function writeTab_(ss, name, header, rows) {
@@ -70,8 +109,13 @@ function writeTab_(ss, name, header, rows) {
 }
 
 function pad_(row, width) {
-  var r = row.slice();
-  while (r.length < width) r.push('');
+  var r = [];
+  for (var i = 0; i < width; i++) {
+    var v = i < row.length ? row[i] : '';
+    if (v === null || v === undefined) v = '';
+    if (typeof v === 'string' && v.length > MAX_CELL) v = v.slice(0, MAX_CELL);
+    r.push(v);
+  }
   return r;
 }
 
