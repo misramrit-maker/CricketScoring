@@ -13,8 +13,9 @@
  *   Bowling        every bowler in every innings: overs, maidens, runs, wickets, wides, no balls, economy
  *   Live           ball by ball record of the match being scored
  *   Current match  the match in progress: teams, captains, keepers, toss, score
- *   Tournaments    every tournament with its status
- *   Fixtures       every fixture: stage, teams, status, result, scores, date
+ *   Tournaments    every tournament with its status, its people and its score or result
+ *   People         each person in a tournament: teams played as, match wins
+ *   Fixtures       every fixture: stage, teams, who played as each, status, result, score after the match
  *   Series         the running score between each pair of teams, e.g. 3-1
  *   Activity       dated log of what was done in each tournament
  *
