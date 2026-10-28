@@ -1,9 +1,14 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
-<title>CricketScorer</title>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="claude:viewport-fit-sides" content="cover">
+<title>CricketScorer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
 <style>
 /* Layout: scorebook column on phones; on tablets the scoring screen splits into board and crease on the left, keypad on the right. Players and teams are saved and picked from lists. */
 :root{
@@ -11,12 +16,12 @@
   --font-body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
   --font-data:"IBM Plex Mono",ui-monospace,Menlo,monospace;
   color-scheme:light;
-  --bg:#84CBBE;
-  --surface:#EAF7F4;
-  --surface2:#CFEBE5;
+  --bg:#A9DDD3;
+  --surface:#F0FAF8;
+  --surface2:#D9F0EB;
   --ink:#0B2625;
   --muted:#34585A;
-  --line:#68B0A3;
+  --line:#86C4B9;
   --accent:#0A605B;
   --accent-ink:#FFFFFF;
   --board:#0B3836;
@@ -51,9 +56,8 @@ button{touch-action:manipulation}
 .big{font-family:var(--font-display);font-size:30px;font-weight:700;line-height:1.1;margin:0 0 4px}
 .big span{font-size:18px;color:var(--muted);font-weight:500}
 
-.top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0 10px}
+.top{position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0 10px}
 .brand{display:flex;align-items:center;gap:8px;font-family:var(--font-display);font-weight:700;font-size:26px;letter-spacing:.01em;line-height:1}
-.top{position:relative}
 .dev{font-size:12px;font-weight:500;color:var(--muted);font-family:var(--font-body);letter-spacing:0;white-space:nowrap}
 .brandcol{display:flex;align-items:baseline;gap:10px;min-width:0;flex-wrap:wrap}
 .syncind{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;white-space:nowrap}
@@ -174,11 +178,15 @@ h1{font-family:var(--font-display);font-size:34px;line-height:1.05;margin:0 0 6p
 .pickrow{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:52px;text-align:left}
 .pickcount{display:flex;align-items:center;gap:8px;font-weight:500;color:var(--muted);font-size:14px;white-space:nowrap}
 .chev{font-style:normal;font-size:28px;line-height:1;color:var(--accent)}
-.plist{display:grid;gap:6px}
-.prow{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface2);text-align:left;cursor:pointer;font-weight:600;width:100%}
+.namebar{display:flex;gap:8px}
+.namebar input{flex:1;min-width:0}
+.arrowbtn{flex:none;width:48px;padding:0;display:grid;place-items:center}
+.searchbox{margin:12px 0 8px}
+.plist{display:grid;gap:6px;max-height:52vh;overflow:auto}
+.prow{display:flex;align-items:center;gap:10px;min-height:52px;padding:6px 8px 6px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface2)}
 .prow.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--surface))}
-.prow[disabled]{opacity:.45;cursor:not-allowed}
-.prow .pn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prow .pn{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prow .btn{flex:none;min-width:76px}
 .prow .pm{font-family:var(--font-data);font-size:13px;font-weight:500;color:var(--muted);flex:none}
 .prow.on .pm{min-width:26px;height:26px;border-radius:13px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center}
 .addrow{display:flex;gap:8px;margin-top:10px}
@@ -250,13 +258,15 @@ h1{font-family:var(--font-display);font-size:34px;line-height:1.05;margin:0 0 6p
 }
 @media (prefers-reduced-motion:reduce){.key:active{transform:none}}
 </style>
-
+</head>
+<body>
 <div id="app"></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script>
 /*LOGIC_START*/
-const OUT_CREDIT=['Bowled','Caught','LBW','Stumped','Hit wicket'];
+const OUT_CREDIT=['Bowled','Caught','LBW','Stumped','Hit wicket','Hit furniture','Six and out'];
+const CUSTOM_HOWS=['Hit furniture','Six and out','Hit the ball twice','Obstructing the field','Handled the ball'];
 function fmtOvers(b){return Math.floor(b/6)+'.'+(b%6);}
 function rate(runs,balls){return balls?runs*6/balls:0;}
 
@@ -395,7 +405,7 @@ let DB=null,pendingOps=[],chain=Promise.resolve();
 function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'base'});}
 const HISTKEY='cricketscorer.hist.v1',SYNCKEY='cricketscorer.sync.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
-const SYNC_URL='https://script.google.com/macros/s/AKfycbxbU--Zw83XG9ZUkr9Y80nExzbGiGdSojvhUzebBhY931duRGOQOrgOwCffYwholB3T/exec';
+const SYNC_URL='https://script.google.com/macros/s/AKfycbyh2tAmsNQy3FR6w2Hb-ChaxJzdcRKfUQRkFmfqEl-LoDyhu_mrXKYm8DUFoQfjT1MU/exec';
 let HIST=[];const SYNC={url:SYNC_URL,status:'',sheet:'',state:'idle',last:null,hide:null};
 function persistHist(){try{localStorage.setItem(HISTKEY,JSON.stringify(HIST));}catch(e){}}
 function loadHist(){try{const h=JSON.parse(localStorage.getItem(HISTKEY)||'null');if(Array.isArray(h)) HIST=h;}catch(e){}
@@ -686,6 +696,8 @@ function howText(inn,b){
     case 'Stumped':return 'st '+(f||'†')+' b '+bw;
     case 'Run out':return 'run out'+(f?' ('+f+')':'');
     case 'Hit wicket':return 'hit wicket b '+bw;
+    case 'Hit furniture':return 'hit furniture b '+bw;
+    case 'Six and out':return 'six and out b '+bw;
   }
   return b.how;
 }
@@ -698,21 +710,21 @@ function logo(){return '<svg width="42" height="25" viewBox="0 0 44 26" aria-hid
 
 /* ---------- squad picker (used in match setup and in Players & teams) ---------- */
 function maxSel(k){return k==='e'?52:16;}
+function iplSquad(k){return k!=='e'&&ui.setup.fmt==='IPL';}
 function pk(k){return k==='e'?ui.squads.editor:ui.setup.slots[+k];}
 function otherSel(k){return (k==='0'||k==='1')?ui.setup.slots[1-(+k)].sel:[];}
 function pickerHtml(k){
-  const p=pk(k),other=otherSel(k);
+  const p=pk(k);
   p.sel=p.sel.filter(id=>libName(id)!=null);
   if(p.cap&&p.sel.indexOf(p.cap)<0) p.cap='';
   if(p.wk&&p.sel.indexOf(p.wk)<0) p.wk='';
-  const roleSel=(f,lab,val)=>'<label class="field"><span>'+lab+'</span><select data-k="'+k+'" data-f="'+f+'"><option value="">Not chosen</option>'+
+  const roleSel=(f,lab,val)=>'<label class="field"><span>'+lab+'</span><select data-k="'+k+'" data-f="'+f+'"><option value="">Select '+lab.toLowerCase()+'</option>'+
     p.sel.map(id=>'<option value="'+esc(id)+'"'+(val===id?' selected':'')+'>'+esc(libName(id))+'</option>').join('')+'</select></label>';
-  const teamOpts='<option value="">'+(k==='e'?'New team':'Choose a saved team')+'</option>'+
-    LIB.teams.map(t=>'<option value="'+esc(t.id)+'"'+(p.teamId===t.id?' selected':'')+'>'+esc(t.name)+'</option>').join('');
-  return '<label class="field" style="margin-top:0"><span>Saved teams</span><select id="ts-'+k+'" data-k="'+k+'" data-f="team">'+teamOpts+'</select></label>'+
-    '<label class="field"><span>Team name</span><input id="tn-'+k+'" data-k="'+k+'" data-f="name" value="'+esc(p.name)+'" maxlength="40" autocomplete="off" placeholder="Team name"></label>'+
+  return '<div class="field" style="margin-top:0"><span>Team name</span><div class="namebar"><input id="tn-'+k+'" data-k="'+k+'" data-f="name" value="'+esc(p.name)+'" maxlength="40" autocomplete="off" placeholder="Team name" aria-label="Team name">'+
+      (LIB.teams.length?'<button class="btn arrowbtn" data-act="team-open" data-k="'+k+'" aria-haspopup="dialog" aria-label="Choose a saved team"><i class="chev" aria-hidden="true">&rsaquo;</i></button>':'')+'</div>'+
+      (p.teamId?'<span class="note" style="margin:0">Saved team</span>':'')+'</div>'+
     '<div class="field"><span>Squad</span>'+
-      (LIB.players.length?'<button class="btn pickrow" data-act="pick-open" data-k="'+k+'" aria-haspopup="dialog"><span>Select players</span><span class="pickcount">'+p.sel.length+' of '+maxSel(k)+' selected <i class="chev" aria-hidden="true">&rsaquo;</i></span></button>':'<div class="note">No saved players yet. Add your first player below.</div>')+
+      (LIB.players.length?'<button class="btn pickrow" data-act="pick-open" data-k="'+k+'" aria-haspopup="dialog"><span>Select players</span><span class="pickcount">'+p.sel.length+' of '+maxSel(k)+(iplSquad(k)?' needed':' selected')+' <i class="chev" aria-hidden="true">&rsaquo;</i></span></button>':'<div class="note">No saved players yet. Add your first player below.</div>')+
     '</div>'+
     (p.sel.length?'<div class="field"><span>Batting order</span><ol class="order">'+p.sel.map((id,i)=>
       (k!=='e'&&i===0?'<li class="divider">Playing XI</li>':'')+(k!=='e'&&i===11?'<li class="divider">Substitutes</li>':'')+
@@ -720,23 +732,50 @@ function pickerHtml(k){
       '<button class="btn small" data-act="move" data-k="'+k+'" data-i="'+i+'" data-d="-1" aria-label="Move up"'+(i===0?' disabled':'')+'>&#9650;</button>'+
       '<button class="btn small" data-act="move" data-k="'+k+'" data-i="'+i+'" data-d="1" aria-label="Move down"'+(i===p.sel.length-1?' disabled':'')+'>&#9660;</button>'+
       '<button class="btn small danger" data-act="unpick" data-k="'+k+'" data-id="'+esc(id)+'" aria-label="Remove '+esc(libName(id))+' from this team">&times;</button></li>').join('')+
-      '</ol><p class="note">'+(k==='e'?'The full squad can have up to 52 players. When you pick a team for a match you choose up to 16 of them.':'Pick up to 16 players for this match. The first 11 play and the rest are substitutes. Batters go in at the fall of a wicket in this order, and you can pick someone else at that moment.')+' Tap a name to rename a player. The cross removes them from this team and keeps them saved.</p></div>':'')+
-    (p.sel.length?'<div class="grid2">'+roleSel('cap','Captain',p.cap||'')+roleSel('wkp','Wicketkeeper',p.wk||'')+'</div><p class="note">Caught behind goes straight to the wicketkeeper, so you do not pick a fielder for it.</p>':'')+
+      '</ol><p class="note">'+(k==='e'?'The full squad can have up to 52 players. When you pick a team for a match you choose up to 16 of them.':''+(iplSquad(k)?'IPL needs all 16: the 11 who play and 5 substitutes, because each team uses an impact player.':'Pick 11 to 16 players for this match. The 5 extra substitutes are optional.')+' The first 11 play and the rest are substitutes. Batters go in at the fall of a wicket in this order, and you can pick someone else at that moment.')+' Tap a name to rename a player. The cross removes them from this team and keeps them saved.</p></div>':'')+
+    (k!=='e'&&p.sel.length?'<div class="grid2">'+roleSel('cap','Captain',p.cap||'')+roleSel('wkp','Wicketkeeper',p.wk||'')+'</div><p class="note">Caught behind goes straight to the wicketkeeper, so you do not pick a fielder for it.</p>':'')+
     '<div class="addrow"><input id="np-'+k+'" data-k="'+k+'" data-f="newp" value="'+esc(p.newp)+'" maxlength="40" autocomplete="off" placeholder="Add a player not on the list" aria-label="New player name"><button class="btn small primary" data-act="add-player" data-k="'+k+'">Add &amp; select</button></div>';
 }
 function pickListHtml(k){
-  const p=pk(k),other=otherSel(k);
-  return LIB.players.map(pl=>{
+  const p=pk(k),other=otherSel(k),q=(ui.pickQ||'').trim().toLowerCase();
+  const tm=(k!=='e'&&p.teamId)?LIB.teams.find(t=>t.id===p.teamId):null;
+  const inSquad=id=>!!tm&&tm.playerIds.indexOf(id)>=0;
+  let list=LIB.players.filter(pl=>!q||pl.name.toLowerCase().indexOf(q)>=0);
+  if(tm) list=list.filter(pl=>inSquad(pl.id)).concat(list.filter(pl=>!inSquad(pl.id)));
+  const full=p.sel.length>=maxSel(k);
+  if(!list.length) return '<div class="empty">No saved players match "'+esc(ui.pickQ||'')+'".</div>';
+  return list.map(pl=>{
     const i=p.sel.indexOf(pl.id),on=i>=0,off=other.indexOf(pl.id)>=0;
-    return '<button class="prow'+(on?' on':'')+'" data-act="pick-toggle" data-k="'+k+'" data-id="'+esc(pl.id)+'"'+(off?' disabled':'')+' aria-pressed="'+on+'"><span class="pn">'+esc(pl.name)+'</span><span class="pm">'+(on?(i+1):off?'In other team':'')+'</span></button>';
+    const btn=off?'<span class="pm">In other team</span>':
+      '<button class="btn small'+(on?'':' primary')+'" data-act="pick-toggle" data-k="'+k+'" data-id="'+esc(pl.id)+'"'+(!on&&full?' disabled':'')+' aria-label="'+(on?'Remove ':'Add ')+esc(pl.name)+'">'+(on?'Remove':'Add')+'</button>';
+    return '<div class="prow'+(on?' on':'')+'"><span class="pn">'+esc(pl.name)+(inSquad(pl.id)?'<span class="sub">In this team\'s squad</span>':'')+'</span>'+(on?'<span class="pm">'+(i+1)+'</span>':'')+btn+'</div>';
   }).join('');
 }
 function pickModal(){
   const k=ui.pickK,p=pk(k);
   return '<div class="scrim" data-act="pick-close-bg"><div class="sheet" role="dialog" aria-modal="true" aria-label="Select players">'+
-    '<h2>Select players</h2><p class="muted" style="margin:0"><b id="pcount">'+p.sel.length+' of '+maxSel(k)+' selected</b>. Tap a name to add or remove them. '+(k==='e'?'The number is the order in the squad.':'The first 11 play and the rest are substitutes. The number is the batting order.')+'</p>'+
-    '<div class="plist" id="plist" style="margin-top:12px">'+(LIB.players.length?pickListHtml(k):'<div class="empty">No saved players yet.</div>')+'</div>'+
+    '<h2>Select players</h2><p class="muted" style="margin:0"><b id="pcount">'+p.sel.length+' of '+maxSel(k)+(iplSquad(k)?' needed':' selected')+(p.sel.length>=maxSel(k)?' (full)':'')+'</b> from '+plural(LIB.players.length,'saved player')+'. Press Add beside a name. '+(k==='e'?'The number is the order in the squad.':'The first 11 play and the rest are substitutes. The number is the batting order.')+'</p>'+
+    '<input class="searchbox" id="psearch" type="search" data-f="psearch" value="'+esc(ui.pickQ||'')+'" placeholder="Search players" autocomplete="off" aria-label="Search players">'+
+    '<div class="plist" id="plist">'+(LIB.players.length?pickListHtml(k):'<div class="empty">No saved players yet.</div>')+'</div>'+
     '<div class="actions" style="margin-top:18px"><button class="btn primary" data-act="pick-close">Done</button></div></div></div>';
+}
+function teamListHtml(k){
+  const p=pk(k),q=(ui.teamQ||'').trim().toLowerCase();
+  const list=LIB.teams.filter(t=>!q||t.name.toLowerCase().indexOf(q)>=0);
+  if(!list.length) return '<div class="empty">No saved teams match "'+esc(ui.teamQ||'')+'".</div>';
+  return list.map(t=>{
+    const on=p.teamId===t.id,n=t.playerIds.filter(i=>libName(i)!=null).length;
+    return '<div class="prow'+(on?' on':'')+'"><span class="pn">'+esc(t.name)+'<span class="sub">'+plural(n,'player')+'</span></span>'+
+      '<button class="btn small'+(on?'':' primary')+'" data-act="team-add" data-k="'+k+'" data-id="'+esc(t.id)+'" aria-label="Add '+esc(t.name)+'">'+(on?'Added':'Add')+'</button></div>';
+  }).join('');
+}
+function teamModal(){
+  const k=ui.teamK;
+  return '<div class="scrim" data-act="team-close-bg"><div class="sheet" role="dialog" aria-modal="true" aria-label="Saved teams">'+
+    '<h2>Saved teams</h2><p class="muted" style="margin:0">Search for a team and press Add to use it.</p>'+
+    '<input class="searchbox" id="tsearch" type="search" data-f="tsearch" value="'+esc(ui.teamQ||'')+'" placeholder="Search teams" autocomplete="off" aria-label="Search teams">'+
+    '<div class="plist" id="tlist">'+teamListHtml(k)+'</div>'+
+    '<div class="actions" style="margin-top:18px"><button class="btn" data-act="team-add" data-k="'+k+'" data-id="">Start a new team</button><button class="btn primary" data-act="team-close">Close</button></div></div></div>';
 }
 function pickTeam(k,id){
   const p=pk(k);
@@ -837,7 +876,7 @@ function renderSetup(){
       '<label class="field" style="margin-top:10px"><span>Max overs per bowler</span><input id="maxper" type="number" inputmode="numeric" min="1" max="90" data-s="maxper" value="'+(test?'':esc(s.maxper))+'" placeholder="'+(test?'No limit':(s.fmt==='Custom'&&!(parseInt(s.overs,10)>0)?'A fifth of the overs':'Default: '+dm))+'"'+(test?' disabled':'')+'></label>'+
     '</div>'+
     '<p class="note">'+(test?'Test match: four innings, no over limit. Each innings ends when the batting side is all out or declares, and bowlers can bowl as many overs as needed.':s.fmt==='IPL'?'IPL: 20 overs an innings, up to 4 overs per bowler, and one impact player per team who can replace a teammate during the match.':s.fmt==='T20'?'T20: 20 overs an innings, up to 4 overs per bowler.':s.fmt==='ODI'?'ODI: 50 overs an innings, up to 10 overs per bowler.':'Type any number of overs. The default limit is a fifth of the innings, rounded up.')+'</p>'+
-    '<h3 class="stephead" style="margin-top:18px"><b>2</b> Teams and players</h3><p class="note" style="margin-top:0">Each side can have as many players as you tick.</p>'+
+    '<h3 class="stephead" style="margin-top:18px"><b>2</b> Teams and players</h3><p class="note" style="margin-top:0">Choose a saved team or type a name, then pick up to 16 players for each side.</p>'+
   '</section>'+
   '<div class="pickers">'+teamCard(0)+teamCard(1)+'</div>'+
   tossHtml()+
@@ -882,6 +921,10 @@ function startMatch(){
     const name=normName(p.name)||('Team '+'AB'[k]);
     const ids=p.sel.filter(id=>libName(id)!=null);
     if(ids.length<2){toast(name+' needs at least 2 players');return false;}
+    if(s.fmt==='IPL'&&ids.length!==16){toast('IPL needs all 16 players for '+name+' (11 plus 5 substitutes). You have '+ids.length+'.');return false;}
+    if(ids.length>16){toast(name+' can have at most 16 players in a match. Remove '+(ids.length-16)+' to continue.');return false;}
+    if(ids.indexOf(p.cap)<0){toast('Choose a captain for '+name);return false;}
+    if(ids.indexOf(p.wk)<0){toast('Choose a wicketkeeper for '+name);return false;}
     const xi=Math.min(11,ids.length);
     const ci=ids.indexOf(p.cap),wi=ids.indexOf(p.wk);
     teams.push({name:name,players:ids.map(libName),xi:xi,active:Array.from({length:xi},(_,k)=>k),gone:[],cap:ci>=0?ci:null,wk:wi>=0?wi:null});
@@ -911,7 +954,10 @@ function actLib(a,d){
     case 'preset':ui.setup.overs=String(d.v);ui.setup.fmt=d.v==='20'?'T20':d.v==='50'?'ODI':'Custom';return true;
     case 'format':{const s=ui.setup;s.fmt=d.v;s.maxper='';if(d.v==='T20'||d.v==='IPL') s.overs='20';else if(d.v==='ODI') s.overs='50';else if(d.v==='Custom') s.overs='';return true;}
     case 'add-player':addPlayerTo(d.k);return true;
-    case 'pick-open':ui.pickK=d.k;return true;
+    case 'pick-open':ui.pickK=d.k;ui.pickQ='';return true;
+    case 'team-open':ui.teamK=d.k;ui.teamQ='';return true;
+    case 'team-close':ui.teamK=null;return true;
+    case 'team-add':pickTeam(d.k,d.id);ui.teamK=null;return true;
     case 'pick-close':ui.pickK=null;return true;
     case 'pick-toggle':{
       const p=pk(d.k),i=p.sel.indexOf(d.id);
@@ -920,7 +966,7 @@ function actLib(a,d){
       else if(p.sel.length>=maxSel(d.k)){toast('Up to '+maxSel(d.k)+' players can be selected here');return false;}
       else p.sel.push(d.id);
       const pl=$('plist');if(pl) pl.innerHTML=pickListHtml(d.k);
-      const pc=$('pcount');if(pc) pc.textContent=p.sel.length+' of '+maxSel(d.k)+' selected';
+      const pc=$('pcount');if(pc) pc.textContent=p.sel.length+' of '+maxSel(d.k)+(iplSquad(d.k)?' needed':' selected')+(p.sel.length>=maxSel(d.k)?' (full)':'');
       return false;}
     case 'save-team':saveTeam(d.k,false);return true;
     case 'clear-editor':ui.squads.editor={teamId:'',name:'',sel:[],newp:''};ui.focus='tn-e';return true;
@@ -1008,7 +1054,6 @@ function creaseHtml(S,inn){
 }
 
 function startPanel(inn){
-  const bt=M.teams[inn.bat].players,bw=M.teams[inn.bowl].players;
   const ab=activeOf(M,inn.bat),aw=activeOf(M,inn.bowl);
   const opt=(team,sel)=>activeOf(M,team).map(i=>'<option value="'+i+'"'+(i===sel?' selected':'')+'>'+esc(M.teams[team].players[i])+'</option>').join('');
   const canBack=M.cur>0;
@@ -1059,7 +1104,7 @@ function actionsHtml(S,inn,over){
   const ul=undoLabel(inn);
   const live=!S.done&&!over;
   const endBtn=live?'<button class="btn'+(ui.armed==='end'?' armed':' danger')+'" data-act="'+(ui.armed==='end'?'end-confirm':'end-arm')+'">'+(ui.armed==='end'?'Tap again to end innings':'End innings')+'</button>':'';
-  return '<div class="actions"><button class="btn primary" data-act="undo"'+(ul?'':' disabled')+'>'+(ul||'Undo')+'</button>'+(over?'':'<button class="btn" data-act="sub-open">'+(M.format==='IPL'?'Impact player':'Substitute')+'</button>')+
+  return '<div class="actions"><button class="btn primary" data-act="undo"'+(ul?'':' disabled')+'>'+(ul||'Undo')+'</button>'+(over||M.format!=='IPL'?'':'<button class="btn" data-act="sub-open">Impact player</button>')+
     (S.bowler!=null&&live?'<button class="btn" data-act="swap">Swap strike</button><button class="btn" data-act="chg-bowler">Change bowler</button>':'')+endBtn+'</div>';
 }
 
@@ -1158,7 +1203,7 @@ function scoreTab(A){
 function wicketModal(A){
   const S=A[M.cur],inn=cur(),wk=ui.wk;
   const bt=M.teams[inn.bat].players,bw=M.teams[inn.bowl].players;
-  const hows={n:['Bowled','Caught','Caught behind','Caught & bowled','LBW','Run out','Stumped','Hit wicket'],wd:['Stumped','Run out','Hit wicket'],nb:['Run out'],b:['Run out'],lb:['Run out']}[wk.mode];
+  const hows={n:['Bowled','Caught','Caught behind','Caught & bowled','LBW','Run out','Stumped','Hit wicket'].concat(M.format==='Custom'?CUSTOM_HOWS:[]),wd:['Stumped','Run out','Hit wicket'],nb:['Run out'],b:['Run out'],lb:['Run out']}[wk.mode];
   const last=S.wkts+1>=S.nBat-1;
   const next=wk.next!=null?wk.next:firstUnbatted(S,inn.bat);
   const howBtns=hows.map(h=>'<button class="opt" data-act="wk-how" data-v="'+h+'" aria-pressed="'+(wk.how===h)+'">'+h+'</button>').join('');
@@ -1282,7 +1327,6 @@ function act(a,d){
   if(a!=='copy') ui.copyText=null;
   if(histAct(a,d)) return;
   if(!M){
-    const was=M;
     if(actLib(a,d)||a==='start') render();
     return;
   }
@@ -1332,7 +1376,7 @@ function act(a,d){
     case 'next-inn':
       if(M.format==='IPL'&&M.cur===0&&!(impactStatus(0)&&impactStatus(1))) break;
       goNextInnings();break;
-    case 'sub-open':ui.sub={team:inn.bat,out:'',in:''};break;
+    case 'sub-open':if(M.format!=='IPL') break;ui.sub={team:inn.bat,out:'',in:''};break;
     case 'sub-team':ui.sub.team=+d.v;ui.sub.out='';ui.sub.in='';break;
     case 'sub-cancel':ui.sub=null;break;
     case 'sub-confirm':{
@@ -1384,7 +1428,7 @@ function render(){
   let ss=null,se=null;
   try{ss=ae.selectionStart;se=ae.selectionEnd;}catch(e){}
   const sy=window.scrollY;
-  $('app').innerHTML=(ui.hist?histHtml():M?renderMatch():renderSetup())+((!M&&!ui.hist&&ui.pickK!=null)?pickModal():'');
+  $('app').innerHTML=(ui.hist?histHtml():M?renderMatch():renderSetup())+((!M&&!ui.hist&&ui.pickK!=null)?pickModal():'')+((!M&&!ui.hist&&ui.teamK!=null)?teamModal():'');
   const want=ui.focus||fid;
   if(want){
     const el=$(want);
@@ -1403,6 +1447,7 @@ document.addEventListener('click',e=>{
   const el=e.target.closest('[data-act]');
   if(!el||el.disabled) return;
   if(el.dataset.act==='wk-cancel-bg'){if(e.target===el){ui.wk=null;render();}return;}
+  if(el.dataset.act==='team-close-bg'){if(e.target===el){ui.teamK=null;render();}return;}
   if(el.dataset.act==='pick-close-bg'){if(e.target===el){ui.pickK=null;render();}return;}
   if(el.dataset.act==='sub-cancel-bg'){if(e.target===el){ui.sub=null;render();}return;}
   act(el.dataset.act,el.dataset);
@@ -1410,6 +1455,8 @@ document.addEventListener('click',e=>{
 function updateToss(){document.querySelectorAll('[data-tn]').forEach(el=>{el.textContent=tn(+el.dataset.tn);});}
 document.addEventListener('input',e=>{
   if(e.target.dataset&&e.target.dataset.f==='sync'){SYNC.url=e.target.value.trim();persistSync();return;}
+  if(e.target.dataset&&e.target.dataset.f==='psearch'){ui.pickQ=e.target.value;const l=$('plist');if(l&&ui.pickK!=null) l.innerHTML=pickListHtml(ui.pickK);return;}
+  if(e.target.dataset&&e.target.dataset.f==='tsearch'){ui.teamQ=e.target.value;const l=$('tlist');if(l&&ui.teamK!=null) l.innerHTML=teamListHtml(ui.teamK);return;}
   if(M) return;
   const t=e.target,d=t.dataset||{};
   if(d.s){ui.setup[d.s]=t.value;return;}
@@ -1442,7 +1489,7 @@ document.addEventListener('change',e=>{
 });
 document.addEventListener('keydown',e=>{
   const t=e.target,d=t.dataset||{};
-  if(!M&&e.key==='Escape'&&ui.pickK!=null){ui.pickK=null;render();return;}
+  if(!M&&e.key==='Escape'&&(ui.pickK!=null||ui.teamK!=null)){ui.pickK=null;ui.teamK=null;render();return;}
   if(!M&&d.f==='newp'&&e.key==='Enter'){e.preventDefault();act('add-player',{k:d.k});return;}
   if(!M||e.metaKey||e.ctrlKey||e.altKey) return;
   const tag=(t.tagName||'').toLowerCase();
@@ -1467,5 +1514,5 @@ if(M) ui.view=M.cur;
 render();
 initDb();
 </script>
-
-</body></html>
+</body>
+</html>
