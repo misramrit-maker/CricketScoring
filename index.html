@@ -428,7 +428,7 @@ let DB=null,pendingOps=[],chain=Promise.resolve();
 function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'base'});}
 const HISTKEY='cricketscorer.hist.v1',SYNCKEY='cricketscorer.sync.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
-const SYNC_URL='https://script.google.com/macros/s/AKfycby9sxDADD27KVY2o-ZAXLKYYMiu8j1kaCGTXM5hdSKtEHThyVw3Zi-FVHVo3riwREKA/exec';
+const SYNC_URL='https://script.google.com/macros/s/AKfycbxKDq9khsj6iobDGNYAtnNynPuQjWrfhWWJwmRCYSNyfElYIZBVNxagm3LictT-I84GpA/exec';
 let HIST=[];const SYNC={url:SYNC_URL,status:'',sheet:'',state:'idle',last:null,hide:null,ready:true};
 function persistHist(){try{localStorage.setItem(HISTKEY,JSON.stringify(HIST));}catch(e){}}
 function loadHist(){try{const h=JSON.parse(localStorage.getItem(HISTKEY)||'null');if(Array.isArray(h)) HIST=h;}catch(e){}
@@ -459,6 +459,9 @@ function libDelPlayer(id){
   LIB.teams.forEach(t=>{
     if(t.playerIds.indexOf(id)>=0){t.playerIds=t.playerIds.filter(x=>x!==id);if(t.capId===id) t.capId='';if(t.wkId===id) t.wkId='';const ids=t.playerIds.slice(),nm=t.name,tid=t.id,cp=t.capId||'',wp=t.wkId||'';remote(db=>db.doc('teams/'+tid).set({name:nm,playerIds:ids,capId:cp,wkId:wp}));}
   });
+  /* A removed player also leaves any squad that is being edited or picked, so every count stays right. */
+  if(ui.squads&&ui.squads.editor&&ui.squads.editor.sel) ui.squads.editor.sel=ui.squads.editor.sel.filter(x=>x!==id);
+  if(ui.setup&&ui.setup.slots) ui.setup.slots.forEach(sl=>{sl.sel=sl.sel.filter(x=>x!==id);if(sl.cap===id) sl.cap='';if(sl.wk===id) sl.wk='';});
   persistLib();syncSoon();
   remote(db=>db.doc('players/'+id).delete());
 }
@@ -1689,7 +1692,7 @@ function squadsHtml(){
     const armed=ui.armed==='dt'+t.id;
     const names=t.playerIds.map(libName).filter(Boolean);
     const open=!!(ui.tOpen||{})[t.id];
-    return '<div class="tcard"><div class="rowline" style="padding:0;border:0"><span class="name" style="flex:1;min-width:0">'+esc(t.name)+' <span class="count">'+names.length+' players</span></span>'+
+    return '<div class="tcard"><div class="rowline" style="padding:0;border:0"><span class="name" style="flex:1;min-width:0">'+esc(t.name)+' <span class="count">'+plural(names.length,'player')+'</span></span>'+
       '<button class="btn small chev" data-act="team-toggle" data-id="'+esc(t.id)+'" aria-expanded="'+open+'" aria-label="'+(open?'Hide':'Show')+' players in '+esc(t.name)+'"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" style="transition:transform .15s;transform:rotate('+(open?'180':'0')+'deg)"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>'+(open?'<div class="note">'+(names.length?names.map(esc).join(', '):'No players')+'</div>':'')+
       '<div class="actions"><button class="btn small" data-act="edit-team" data-id="'+esc(t.id)+'">Edit</button>'+
       '<button class="btn small'+(armed?' armed':' danger')+'" data-act="'+(armed?'del-team':'del-team-arm')+'" data-id="'+esc(t.id)+'">'+(armed?'Confirm remove':'Remove')+'</button></div></div>';
