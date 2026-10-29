@@ -4,13 +4,15 @@
  * Every time anything changes in the app, it sends ALL of its data to this
  * script and the script rewrites one tab per kind of data:
  *
- *   Players        every saved player
+ *   Players        every saved player and the teams they are in
  *   Teams          saved teams with their players, captain and wicketkeeper
  *   Matches        every finished match: date, teams, toss, scores, result,
  *                  category (Tournament match / Regular match) and tournament
- *   Innings        one row per innings: total, wickets, overs, extras, fall of wickets
+ *   Innings        one row per innings (the match in progress is included): total, wickets, overs, extras, fall of wickets
  *   Batting        every batter in every innings: runs, balls, 4s, 6s, strike rate, how out
  *   Bowling        every bowler in every innings: overs, maidens, runs, wickets, wides, no balls, economy
+ *   Lineups        every player in every match: team, captain, wicketkeeper, playing or substitute
+ *   Ball by ball   every ball and event of every match, finished or in progress
  *   Live           ball by ball record of the match being scored
  *   Current match  the match in progress: teams, captains, keepers, toss, score
  *   Tournaments    every tournament with its status, its people and its score or result
