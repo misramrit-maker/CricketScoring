@@ -36,9 +36,20 @@
  * also added automatically whenever the app sends data, and whenever the web app
  * URL is opened in a browser.
  *
+ * Players and teams typed or saved in the Players and Teams tabs are also read back
+ * by the app, so they appear in the team and player pickers when starting a match.
+ * In the Teams tab, put the team name in column B and the player names, separated
+ * by commas, in column C (captain in D and wicketkeeper in E are optional).
+ *
  * Open the web app URL in a browser to check it is live. It shows when the
  * last sync arrived and how many rows each tab holds.
  */
+
+/* Leave this empty if you made the script from the sheet itself (Extensions > Apps Script).
+ * If the script was created on its own at script.google.com, paste the sheet's ID here
+ * (the long text in the sheet's address between /d/ and /edit). If you leave it empty in
+ * that case, the script creates a new sheet called "CricketScorer data" and keeps using it. */
+var SPREADSHEET_ID = '';
 
 var MAX_CELL = 45000; // Google Sheets allows 50,000 characters in a cell.
 
@@ -71,7 +82,7 @@ function doPost(e) {
       return out_({ ok: false, error: 'Not a CricketScorer payload' });
     }
 
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var ss = getSS_();
     var tabs = data.tabs;
 
     // Older versions of the app sent fixed fields instead of a list of tabs.
@@ -112,17 +123,43 @@ function doPost(e) {
   }
 }
 
-function doGet() {
-  try { ensureHeadings_(SpreadsheetApp.getActiveSpreadsheet()); } catch (e) {}
+function doGet(e) {
+  // The app asks for the saved players and teams so they can be picked for a match on any device.
+  if (e && e.parameter && e.parameter.action === 'lib') {
+    try {
+      var ss0 = getSS_();
+      return out_({ ok: true, players: readTab_(ss0, 'Players'), teams: readTab_(ss0, 'Teams') });
+    } catch (err) {
+      return out_({ ok: false, error: String(err) });
+    }
+  }
+  var info = { ok: true, app: 'CricketScorer' };
+  try {
+    var ss = getSS_();
+    ensureHeadings_(ss);
+    info.sheet = ss.getName();
+    info.sheetUrl = ss.getUrl();
+    info.tabs = ss.getSheets().map(function (s) { return s.getName(); });
+  } catch (e) {
+    info.ok = false;
+    info.problem = 'Could not open a spreadsheet: ' + String(e);
+  }
   var props = PropertiesService.getScriptProperties();
   var counts = {};
   try { counts = JSON.parse(props.getProperty('counts') || '{}'); } catch (x) {}
-  return out_({
-    ok: true,
-    app: 'CricketScorer',
-    lastSync: props.getProperty('lastSync') || 'never',
-    rows: counts
-  });
+  info.lastSync = props.getProperty('lastSync') || 'never';
+  info.rows = counts;
+  return out_(info);
+}
+
+/* Reads a tab's rows without its heading row. */
+function readTab_(ss, name) {
+  var sh = ss.getSheetByName(name);
+  if (!sh || sh.getLastRow() < 2) return [];
+  var width = Math.max(sh.getLastColumn(), 1);
+  var vals = sh.getRange(2, 1, sh.getLastRow() - 1, width).getValues();
+  return vals.filter(function (r) { return String(r[1] === undefined ? '' : r[1]) !== '' || String(r[0]) !== ''; })
+    .map(function (r) { return r.map(function (v) { return v === null || v === undefined ? '' : String(v); }); });
 }
 
 function writeTab_(ss, name, header, rows) {
@@ -166,11 +203,29 @@ function ensureHeadings_(ss) {
   if (def && ss.getSheets().length > 1 && def.getLastRow() === 0) { try { ss.deleteSheet(def); } catch (e) {} }
 }
 
+/* Finds the spreadsheet to write to. */
+function getSS_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (ss) return ss;
+  var props = PropertiesService.getScriptProperties();
+  var id = SPREADSHEET_ID || props.getProperty('ssId');
+  if (id) return SpreadsheetApp.openById(id);
+  ss = SpreadsheetApp.create('CricketScorer data');
+  props.setProperty('ssId', ss.getId());
+  return ss;
+}
+
+/* Adds a CricketScorer menu to the sheet when the script is bound to it. */
+function onOpen() {
+  try { SpreadsheetApp.getUi().createMenu('CricketScorer').addItem('Add tabs and headings', 'setupSheets').addToUi(); } catch (e) {}
+}
+
 /* Run this once from the editor to create every tab with its headings. */
 function setupSheets() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = getSS_();
   ensureHeadings_(ss);
-  return 'Tabs and headings are ready.';
+  Logger.log('Tabs and headings are ready: ' + ss.getUrl());
+  return 'Tabs and headings are ready: ' + ss.getUrl();
 }
 
 function pad_(row, width) {

@@ -429,7 +429,7 @@ function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'
 const HISTKEY='cricketscorer.hist.v1',SYNCKEY='cricketscorer.sync.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
 const SYNC_URL='';
-let HIST=[];const SYNC={url:SYNC_URL,status:'',sheet:'',state:'idle',last:null,hide:null};
+let HIST=[];const SYNC={url:SYNC_URL,status:'',sheet:'',state:'idle',last:null,hide:null,ready:true};
 function persistHist(){try{localStorage.setItem(HISTKEY,JSON.stringify(HIST));}catch(e){}}
 function loadHist(){try{const h=JSON.parse(localStorage.getItem(HISTKEY)||'null');if(Array.isArray(h)) HIST=h;}catch(e){}
   try{const y=JSON.parse(localStorage.getItem(SYNCKEY)||'null');if(y&&typeof y.url==='string'&&y.url) SYNC.url=y.url;}catch(e){}}
@@ -660,12 +660,59 @@ function setSync(st){
 }
 function paintSync(){const el=document.getElementById('syncind');if(el) el.outerHTML=syncIndHtml();}
 function syncSoon(){
-  if(!SYNC.url) return;
+  if(!SYNC.url||SYNC.ready===false) return;
   const b=buildSync();
   if(b.sig===SYNC.last&&SYNC.state!=='fail') return;
   setSync('syncing');clearTimeout(syncT);syncT=setTimeout(()=>syncPush(false),700);
 }
 let syncTry=0,syncRetryT=null,syncUrlT=null;
+/* Players and teams saved in the spreadsheet (the Players and Teams tabs) are brought into the app, so they can be picked for a match on any device.
+   Nothing is deleted: a name that is new is added, and a team gets any extra players listed for it in the sheet. */
+function mergeSheetLib(d){
+  if(!d||d.ok===false) return 0;
+  let n=0;
+  const byName=nm=>LIB.players.find(p=>p.name.toLowerCase()===String(nm).toLowerCase());
+  const ensure=(nm,wantId)=>{
+    let p=byName(nm);
+    if(!p){
+      const id=wantId&&!LIB.players.some(x=>x.id===String(wantId))?String(wantId):newId('p');
+      libPutPlayer(id,nm);p={id:id,name:nm};n++;
+    }
+    return p.id;
+  };
+  (d.players||[]).forEach(r=>{const nm=normName(r&&r[1]);if(nm) ensure(nm,r[0]);});
+  (d.teams||[]).forEach(r=>{
+    const name=normName(r&&r[1]);if(!name) return;
+    const names=String(r[2]||'').split(',').map(normName).filter(Boolean);
+    const ids=uniq(names.map(nm=>ensure(nm)));
+    const capName=normName(r[3]),wkName=normName(r[4]);
+    const cap=capName&&byName(capName)?byName(capName).id:'',wk=wkName&&byName(wkName)?byName(wkName).id:'';
+    const t=LIB.teams.find(x=>x.id===String(r[0])||x.name.toLowerCase()===name.toLowerCase());
+    if(!t){
+      const id=r[0]&&!LIB.teams.some(x=>x.id===String(r[0]))?String(r[0]):newId('t');
+      libPutTeam(id,name,ids.slice(0,52),cap,wk);n++;
+    }else{
+      const add=ids.filter(i=>t.playerIds.indexOf(i)<0);
+      if(add.length){libPutTeam(t.id,t.name,t.playerIds.concat(add).slice(0,52),t.capId||cap,t.wkId||wk);n++;}
+    }
+  });
+  return n;
+}
+function importLib(){
+  if(!SYNC.url) return Promise.resolve(0);
+  let u;try{u=new URL(SYNC.url);if(u.protocol!=='https:'&&u.protocol!=='http:') throw 0;}catch(e){return Promise.resolve(0);}
+  u.searchParams.set('action','lib');
+  let ctl=null,t=null;
+  try{ctl=new AbortController();t=setTimeout(()=>ctl.abort(),9000);}catch(e){}
+  return Promise.resolve().then(()=>fetch(u.href,{credentials:'omit',redirect:'follow',signal:ctl?ctl.signal:undefined})).then(r=>r.json())
+    .then(d=>{clearTimeout(t);const n=mergeSheetLib(d);if(n&&!M) render();return n;})
+    .catch(()=>{clearTimeout(t);return 0;});
+}
+function syncStart(then){
+  if(!SYNC.url){SYNC.ready=true;return;}
+  SYNC.ready=false;
+  importLib().then(()=>{SYNC.ready=true;then();});
+}
 function syncDone(b){
   SYNC.last=b.sig;syncTry=0;clearTimeout(syncRetryT);
   try{localStorage.setItem(SYNCEDKEY,sigHash(b.sig));}catch(e){}
@@ -679,7 +726,7 @@ function syncFail(msg){
   if(syncTry<4&&SYNC.url){syncTry++;syncRetryT=setTimeout(()=>{if(SYNC.url) syncPush(true);},Math.min(30000,2000*Math.pow(2,syncTry)));}
 }
 function syncPush(force,leaving){
-  if(!SYNC.url) return Promise.resolve();
+  if(!SYNC.url||SYNC.ready===false) return Promise.resolve();
   let u;try{u=new URL(SYNC.url);if(u.protocol!=='https:'&&u.protocol!=='http:') throw 0;}catch(e){syncTry=4;syncFail('That Sync URL does not look like a web address.');return Promise.resolve();}
   if(/\/dev\/?$/.test(u.pathname)){syncTry=4;syncFail('That Sync URL ends in /dev. Use the web app URL that ends in /exec.');return Promise.resolve();}
   let b;try{b=buildSync();}catch(e){syncFail('Could not prepare the data to send ('+(e&&e.message?e.message:'error')+').');return Promise.resolve();}
@@ -793,7 +840,7 @@ function histHtml(){
     '<div class="actions" style="margin-top:0"><button class="btn small" data-act="hist-close">&larr; Back</button></div>'+
     '<section class="panel pad"><h1>Match history</h1>'+catBtns('hist-filter',ui.histFilter||'all')+(LIB.mode==='db'?'<p class="note">Saved with this app and kept between sessions.</p>':'<p class="note">Saved in this browser only.</p>')+items+'</section>'+
     '<section class="panel pad" id="syncpanel"><h3>Spreadsheet sync</h3>'+
-    '<label class="field"><span>Sync URL</span><input id="syncurl" type="url" inputmode="url" autocomplete="off" placeholder="https://script.google.com/macros/s/.../exec" value="'+esc(SYNC.url)+'" data-f="sync"></label>'+
+    '<label class="field"><span>Sync URL</span><input id="syncurl" type="url" inputmode="url" autocomplete="off" placeholder="Paste your Sync URL here" value="'+esc(SYNC.url)+'" data-f="sync"></label>'+
     '<p class="note">All your data (players, teams, matches and the live ball-by-ball) is sent to this address whenever anything changes.'+(SYNC.status?' <b>'+esc(SYNC.status)+'</b>':'')+'</p>'+
     '<div class="actions"><button class="btn" data-act="sync-all"'+(SYNC.url?'':' disabled')+'>Send everything now</button></div>'+
     '<h3 style="margin-top:16px">Save the whole history</h3>'+
@@ -930,8 +977,10 @@ function pickerHtml(k){
     p.sel.map(id=>'<option value="'+esc(id)+'"'+(val===id?' selected':'')+'>'+esc(libName(id))+'</option>').join('')+'</select></label>';
   return '<div class="field" style="margin-top:0"><span>Team name</span><div class="namebar"><input id="tn-'+k+'" data-k="'+k+'" data-f="name" value="'+esc(p.name)+'" maxlength="40" autocomplete="off" placeholder="Team name" aria-label="Team name">'+
       (LIB.teams.length?'<button class="btn arrowbtn" data-act="team-open" data-k="'+k+'" aria-haspopup="dialog" aria-label="Choose a saved team"><i class="chev" aria-hidden="true">&rsaquo;</i></button>':'')+'</div>'+
+      (LIB.teams.length?'<input class="searchbox" type="search" data-f="qopen" data-q="team" data-k="'+k+'" placeholder="Search saved teams" aria-label="Search saved teams" autocomplete="off" style="margin:8px 0 0">':'')+
       (p.teamId?'<span class="note" style="margin:0">Saved team</span>':'')+'</div>'+
     '<div class="field"><span>Squad</span>'+
+      (LIB.players.length?'<input class="searchbox" type="search" data-f="qopen" data-q="pick" data-k="'+k+'" placeholder="Search saved players or a team" aria-label="Search saved players or a team" autocomplete="off" style="margin:0 0 8px">':'')+
       (LIB.players.length?'<button class="btn pickrow" data-act="pick-open" data-k="'+k+'" aria-haspopup="dialog"><span>Select players</span><span class="pickcount">'+p.sel.length+' of '+maxSel(k)+(iplSquad(k)?' needed':' selected')+' <i class="chev" aria-hidden="true">&rsaquo;</i></span></button>':'<div class="note">No saved players yet. Add your first player below.</div>')+
     '</div>'+
     (p.sel.length?'<div class="field"><span>Batting order</span><ol class="order">'+p.sel.map((id,i)=>
@@ -2152,7 +2201,7 @@ function render(){
   if(want){
     const el=$(want);
     if(el){
-      try{el.focus({preventScroll:true});}catch(e){}
+      try{el.focus({preventScroll:true});if(ui.focus&&el.setSelectionRange) el.setSelectionRange(el.value.length,el.value.length);}catch(e){}
       if(want===fid&&!ui.focus&&ss!=null){try{el.setSelectionRange(ss,se);}catch(e){}}
     }
   }
@@ -2174,12 +2223,19 @@ document.addEventListener('click',e=>{
 });
 function updateToss(){document.querySelectorAll('[data-tn]').forEach(el=>{el.textContent=tn(+el.dataset.tn);});}
 document.addEventListener('input',e=>{
-  if(e.target.dataset&&e.target.dataset.f==='sync'){SYNC.url=e.target.value.trim();persistSync();SYNC.last=null;syncTry=0;clearTimeout(syncRetryT);clearTimeout(syncUrlT);if(SYNC.url) syncUrlT=setTimeout(()=>syncPush(true),1200);return;}
+  if(e.target.dataset&&e.target.dataset.f==='sync'){SYNC.url=e.target.value.trim();persistSync();SYNC.last=null;syncTry=0;clearTimeout(syncRetryT);clearTimeout(syncUrlT);SYNC.ready=!SYNC.url;if(SYNC.url) syncUrlT=setTimeout(()=>syncStart(()=>syncPush(true)),1200);return;}
   if(e.target.dataset&&e.target.dataset.f==='psearch'){ui.pickQ=e.target.value;const l=$('plist');if(l&&ui.pickK!=null) l.innerHTML=pickListHtml(ui.pickK);return;}
   if(e.target.dataset&&e.target.dataset.f==='tmsearch'){if(ui.tm){ui.tm.q=e.target.value;const T=curTour(),l=$('tmlist');if(T&&l) l.innerHTML=tmTeamsListHtml(T);}return;}
   if(e.target.dataset&&e.target.dataset.f==='tsearch'){ui.teamQ=e.target.value;const l=$('tlist');if(l&&ui.teamK!=null) l.innerHTML=teamListHtml(ui.teamK);return;}
   if(M) return;
   const t=e.target,d=t.dataset||{};
+  if(d.f==='qopen'){
+    /* Typing in a search bar on the form opens the list with that search already applied. */
+    const v=t.value;t.value='';
+    if(d.q==='team'){ui.teamK=d.k;ui.teamQ=v;ui.focus='tsearch';}
+    else{ui.pickK=d.k;ui.pickQ=v;ui.focus='psearch';}
+    render();return;
+  }
   if(d.s){ui.setup[d.s]=t.value;return;}
   if(d.f==='tname'){ui.tnew.name=t.value;return;}
   if(d.f==='tpname'){ui.tpName=t.value;return;}
@@ -2255,7 +2311,7 @@ if(M){try{if(matchOutcome(M,analyse())){if(!M.recKey) histRecord(false);clearSav
 if(M) ui.view=M.cur;
 render();
 initDb();
-if(SYNC.url) syncSoon();
+syncStart(()=>syncSoon());
 /* Leaving or closing the app never loses the match: pending saves are sent straight away, and anything that failed is retried when the connection returns. */
 function flushNow(){
   if(liveT!==null){clearTimeout(liveT);liveT=null;liveWrite(()=>{if(!M) return null;REV++;return {json:JSON.stringify(M),rev:REV,by:DEVICE,at:new Date().toISOString()};});}
