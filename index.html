@@ -16,12 +16,12 @@
   --font-body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
   --font-data:"IBM Plex Mono",ui-monospace,Menlo,monospace;
   color-scheme:light;
-  --bg:#A9DDD3;
-  --surface:#F0FAF8;
-  --surface2:#D9F0EB;
+  --bg:#8DD8D2;
+  --surface:#EEFAF9;
+  --surface2:#D2F0EE;
   --ink:#0B2625;
   --muted:#34585A;
-  --line:#86C4B9;
+  --line:#6BC1BD;
   --accent:#0A605B;
   --accent-ink:#FFFFFF;
   --board:#0B3836;
@@ -62,7 +62,7 @@ button{touch-action:manipulation}
 .syncind.done{color:#1E8E34}
 .syncind.fail{color:var(--wicket)}
 .syncind .spin{width:14px;height:14px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:spin .8s linear infinite;flex:none}
-.syncind.fail .spin{animation:none;border-right-color:currentColor}
+.syncind.done .spin,.syncind.fail .spin{animation:none;border-right-color:currentColor}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.syncind .spin{animation-duration:2.4s}}
 .topr{display:flex;align-items:center;gap:6px;min-width:0}
@@ -621,6 +621,11 @@ function buildSync(){
     cur.push([tp(0).name+' v '+tp(1).name,M.format||'',M.overs||'',tossText(),M.tour?M.tour.label:'',sc,st,tp(0).name,pn(0,tp(0).cap),pn(0,tp(0).wk),tp(1).name,pn(1,tp(1).cap),pn(1,tp(1).wk),tossData().caller,tossData().call,tossData().landed,tossData().winner,tossData().choice]);
   }
   const c=syncCards(),t=syncTours();
+  /* One row per match for the toss: who called, what they called, which side of the bat landed face up, who won and what they chose. */
+  const tossRows=HIST.slice().reverse().map(r=>{const j=r.tj||{};return [r.id,r.at?String(r.at).slice(0,10):'',r.t1+' v '+r.t2,r.format,j.mode||'',j.caller||'',j.call||'',j.landed||'',j.winner||'',j.choice||'',r.toss||'',r.result||''];});
+  if(M&&!(M.recId&&HIST.some(x=>x.id===M.recId))){
+    try{const j=tossData(),nm=M.teams[0].name+' v '+M.teams[1].name+' (in progress)';tossRows.unshift(['In progress',(M.recAt||M.savedAt||new Date().toISOString()).slice(0,10),nm,M.format||'',j.mode,j.caller,j.call,j.landed,j.winner,j.choice,tossText(),'']);}catch(e){}
+  }
   const players=LIB.players.map(x=>[x.id,x.name,LIB.teams.filter(t=>t.playerIds.indexOf(x.id)>=0).map(t=>t.name).join(', ')]);
   const teams=LIB.teams.map(x=>[x.id,x.name,x.playerIds.map(nm).join(', '),nm(x.capId),nm(x.wkId)]);
   const liveHead=['Match','Innings','Event #','Type','Ball kind','Runs','Bowler','Wicket','Batter out','Fielder','Bowler id'];
@@ -636,6 +641,7 @@ function buildSync(){
       {name:'Innings',head:['Match ID','Date','Match','Innings','Batting team','Runs','Wickets','Overs','Extras','Fall of wickets'],rows:c.inn},
       {name:'Batting',head:['Match ID','Date','Match','Innings','Team','Batter','How out','Runs','Balls','4s','6s','Strike rate'],rows:c.bat},
       {name:'Bowling',head:['Match ID','Date','Match','Innings','Team','Bowler','Overs','Maidens','Runs','Wickets','Wides','No balls','Economy'],rows:c.bowl},
+      {name:'Toss',head:['Match ID','Date','Match','Format','Toss type','Called by','Call','Bat flip outcome (side facing up)','Toss won by','Chose to','Toss summary','Result'],rows:tossRows},
       {name:'Lineups',head:['Match ID','Date','Match','Team','Player','Role','Status'],rows:c.lu},
       {name:'Ball by ball',head:['Match ID','Date','Match','Innings','Event #','Type','Ball kind','Runs','Bowler','Wicket','Batter out','Fielder'],rows:c.bb},
       {name:'Live',head:liveHead,rows:live},
@@ -647,7 +653,7 @@ function buildSync(){
       {name:'Activity',head:['Tournament','When','What happened'],rows:t.log}
     ]};
   const sig=JSON.stringify(o);o.sentAt=new Date().toISOString();
-  return {sig:sig,body:JSON.stringify(o)};
+  return {sig:sig,body:JSON.stringify(o),sentAt:o.sentAt};
 }
 function syncIndHtml(){
   const st=SYNC.state;
@@ -713,10 +719,27 @@ function syncStart(then){
   SYNC.ready=false;
   importLib().then(()=>{SYNC.ready=true;then();});
 }
-function syncDone(b){
+/* Asks the script what it last received. A GET reply can be read, so this shows whether the sheet really got the data. */
+function sheetStatus(action){
+  let u;try{u=new URL(SYNC.url);}catch(e){return Promise.resolve(null);}
+  u.searchParams.set('action',action||'status');
+  let ctl=null,t=null;
+  try{ctl=new AbortController();t=setTimeout(()=>ctl.abort(),12000);}catch(e){}
+  return Promise.resolve().then(()=>fetch(u.href,{credentials:'omit',redirect:'follow',signal:ctl?ctl.signal:undefined})).then(r=>r.json()).then(d=>{clearTimeout(t);return d;}).catch(()=>{clearTimeout(t);return null;});
+}
+function verifySent(b,tries){
+  return sheetStatus('status').then(st=>{
+    if(!st||typeof st!=='object') return {r:'unreadable'};
+    if(st.ok===false) return {r:'problem',msg:st.problem||st.error||''};
+    if(st.lastSync===b.sentAt) return {r:'ok',st:st};
+    if(tries<3) return new Promise(res=>setTimeout(res,1500)).then(()=>verifySent(b,tries+1));
+    return {r:'missing',st:st};
+  });
+}
+function syncDone(b,note){
   SYNC.last=b.sig;syncTry=0;clearTimeout(syncRetryT);
   try{localStorage.setItem(SYNCEDKEY,sigHash(b.sig));}catch(e){}
-  SYNC.status='Last sent '+new Date().toLocaleTimeString()+' (the page cannot read the reply, so check your sheet).';
+  SYNC.status='Last sent '+new Date().toLocaleTimeString()+' '+(note||'(the page cannot read the reply, so check your sheet).');
   setSync('done');if(ui.hist) render();
 }
 function syncFail(msg){
@@ -745,7 +768,17 @@ function syncPush(force,leaving){
     syncFail('Could not reach the Sync URL. Check your internet connection and that the web app is deployed with access set to Anyone. It will try again on its own.');
   };
   let p;try{p=fetch(u.href,opts);}catch(e){failed();return Promise.resolve();}
-  return p.then(()=>{if(my!==syncSeq) return;syncDone(b);},failed);
+  if(leaving) return p.then(()=>{if(my!==syncSeq) return;syncDone(b);},failed);
+  return p.then(()=>{
+    if(my!==syncSeq) return;
+    return verifySent(b,0).then(v=>{
+      if(my!==syncSeq) return;
+      if(v.r==='ok') syncDone(b,'and confirmed by your sheet.');
+      else if(v.r==='unreadable') syncDone(b,'(sent, but this page could not read the sheet script\'s reply, so check your sheet).');
+      else if(v.r==='problem') syncFail('The script could not open your spreadsheet: '+v.msg);
+      else syncFail('The script answered but did not save the data. In Apps Script use Deploy > Manage deployments > Edit > New version, with "Execute as: Me" and "Who has access: Anyone".');
+    });
+  },failed);
 }
 async function exportSheet(){
   SYNC.sheet='';
@@ -842,7 +875,7 @@ function histHtml(){
     '<section class="panel pad" id="syncpanel"><h3>Spreadsheet sync</h3>'+
     '<label class="field"><span>Sync URL</span><input id="syncurl" type="url" inputmode="url" autocomplete="off" placeholder="Paste your Sync URL here" value="'+esc(SYNC.url)+'" data-f="sync"></label>'+
     '<p class="note">All your data (players, teams, matches and the live ball-by-ball) is sent to this address whenever anything changes.'+(SYNC.status?' <b>'+esc(SYNC.status)+'</b>':'')+'</p>'+
-    '<div class="actions"><button class="btn" data-act="sync-all"'+(SYNC.url?'':' disabled')+'>Send everything now</button></div>'+
+    '<div class="actions"><button class="btn" data-act="sync-all"'+(SYNC.url?'':' disabled')+'>Send everything now</button><button class="btn" data-act="sync-test"'+(SYNC.url?'':' disabled')+'>Check connection and add headings</button></div>'+
     '<h3 style="margin-top:16px">Save the whole history</h3>'+
     '<div class="actions" style="margin-top:0"><button class="btn primary" data-act="export-sheet"'+(HIST.length?'':' disabled')+'>Save to Google Sheet</button><button class="btn" data-act="export-csv"'+(HIST.length?'':' disabled')+'>Download CSV</button></div>'+
     (SYNC.sheet?'<p class="note"><b>'+esc(SYNC.sheet)+'</b></p>':'')+'</section></div>';
@@ -863,6 +896,15 @@ function histAct(a,d){
     case 'hist-del-arm':ui.armed='h:'+d.id;break;
     case 'hist-del':{const id=d.id;HIST=HIST.filter(x=>x.id!==id);persistHist();syncSoon();ui.armed=null;remote(db=>db.doc('matches/'+id).delete());break;}
     case 'sync-all':syncPush(true);return true;
+    case 'sync-test':{
+      SYNC.status='Checking the connection...';
+      sheetStatus('status').then(st=>{
+        if(!st) SYNC.status='Could not reach the script. Check the URL ends in /exec, the script is deployed as a web app, and "Who has access" is Anyone.';
+        else if(st.ok===false) SYNC.status='The script is reachable but has a problem: '+(st.problem||st.error||'unknown')+'.';
+        else SYNC.status='Connected to the sheet "'+(st.sheet||'')+'" with '+((st.tabs||[]).length)+' tabs. The headings are in place. Last data received: '+(st.lastSync==='never'?'none yet':st.lastSync)+'.';
+        if(ui.hist) render();
+      });
+      return true;}
     case 'export-sheet':exportSheet();return true;
     case 'export-csv':exportCsv();return true;
     default:return false;

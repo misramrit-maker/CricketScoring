@@ -11,6 +11,8 @@
  *   Innings        one row per innings (the match in progress is included): total, wickets, overs, extras, fall of wickets
  *   Batting        every batter in every innings: runs, balls, 4s, 6s, strike rate, how out
  *   Bowling        every bowler in every innings: overs, maidens, runs, wickets, wides, no balls, economy
+ *   Toss           the toss of every match: who called, the call, the bat flip outcome,
+ *                  who won the toss and what they chose
  *   Lineups        every player in every match: team, captain, wicketkeeper, playing or substitute
  *   Ball by ball   every ball and event of every match, finished or in progress
  *   Live           ball by ball record of the match being scored
@@ -61,6 +63,7 @@ var HEADINGS = {
   "Innings": ["Match ID", "Date", "Match", "Innings", "Batting team", "Runs", "Wickets", "Overs", "Extras", "Fall of wickets"],
   "Batting": ["Match ID", "Date", "Match", "Innings", "Team", "Batter", "How out", "Runs", "Balls", "4s", "6s", "Strike rate"],
   "Bowling": ["Match ID", "Date", "Match", "Innings", "Team", "Bowler", "Overs", "Maidens", "Runs", "Wickets", "Wides", "No balls", "Economy"],
+  "Toss": ["Match ID", "Date", "Match", "Format", "Toss type", "Called by", "Call", "Bat flip outcome (side facing up)", "Toss won by", "Chose to", "Toss summary", "Result"],
   "Lineups": ["Match ID", "Date", "Match", "Team", "Player", "Role", "Status"],
   "Ball by ball": ["Match ID", "Date", "Match", "Innings", "Event #", "Type", "Ball kind", "Runs", "Bowler", "Wicket", "Batter out", "Fielder"],
   "Live": ["Match", "Innings", "Event #", "Type", "Ball kind", "Runs", "Bowler", "Wicket", "Batter out", "Fielder", "Bowler id"],
@@ -71,7 +74,7 @@ var HEADINGS = {
   "Series": ["Tournament", "Team A", "Wins A", "Wins B", "Team B", "Ties", "Draws", "Played", "Total", "Status"],
   "Activity": ["Tournament", "When", "What happened"]
 };
-var TAB_ORDER = ["Players", "Teams", "Matches", "Innings", "Batting", "Bowling", "Lineups", "Ball by ball", "Live", "Current match", "Tournaments", "People", "Fixtures", "Series", "Activity"];
+var TAB_ORDER = ["Players", "Teams", "Matches", "Innings", "Batting", "Bowling", "Toss", "Lineups", "Ball by ball", "Live", "Current match", "Tournaments", "People", "Fixtures", "Series", "Activity"];
 
 function doPost(e) {
   var lock = LockService.getScriptLock();
@@ -124,6 +127,8 @@ function doPost(e) {
 }
 
 function doGet(e) {
+  // Every visit makes sure all tabs exist with their headings.
+  try { ensureHeadings_(getSS_()); } catch (x0) {}
   // The app asks for the saved players and teams so they can be picked for a match on any device.
   if (e && e.parameter && e.parameter.action === 'lib') {
     try {
