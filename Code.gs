@@ -31,11 +31,36 @@
  *  5. If you change this code later, use Deploy > Manage deployments >
  *     Edit > New version so the same URL keeps working.
  *
+ * To add every tab and its column headings straight away, choose the function
+ * setupSheets in the Apps Script editor and press Run (once). The headings are
+ * also added automatically whenever the app sends data, and whenever the web app
+ * URL is opened in a browser.
+ *
  * Open the web app URL in a browser to check it is live. It shows when the
  * last sync arrived and how many rows each tab holds.
  */
 
 var MAX_CELL = 45000; // Google Sheets allows 50,000 characters in a cell.
+
+/* The column headings of every tab, so they are always written even when a tab has no rows yet. */
+var HEADINGS = {
+  "Players": ["Id", "Name", "Teams"],
+  "Teams": ["Id", "Team", "Players", "Captain", "Wicketkeeper"],
+  "Matches": ["Match ID", "Date", "Team A", "Team B", "Format", "Overs", "Toss", "Scores", "Result", "Category", "Tournament", "Toss called by", "Call", "Bat flip landed", "Toss won by", "Chose to"],
+  "Innings": ["Match ID", "Date", "Match", "Innings", "Batting team", "Runs", "Wickets", "Overs", "Extras", "Fall of wickets"],
+  "Batting": ["Match ID", "Date", "Match", "Innings", "Team", "Batter", "How out", "Runs", "Balls", "4s", "6s", "Strike rate"],
+  "Bowling": ["Match ID", "Date", "Match", "Innings", "Team", "Bowler", "Overs", "Maidens", "Runs", "Wickets", "Wides", "No balls", "Economy"],
+  "Lineups": ["Match ID", "Date", "Match", "Team", "Player", "Role", "Status"],
+  "Ball by ball": ["Match ID", "Date", "Match", "Innings", "Event #", "Type", "Ball kind", "Runs", "Bowler", "Wicket", "Batter out", "Fielder"],
+  "Live": ["Match", "Innings", "Event #", "Type", "Ball kind", "Runs", "Bowler", "Wicket", "Batter out", "Fielder", "Bowler id"],
+  "Current match": ["Match", "Format", "Overs", "Toss", "Tournament", "Score", "Status", "Team A", "Captain A", "Wicketkeeper A", "Team B", "Captain B", "Wicketkeeper B", "Toss called by", "Call", "Bat flip landed", "Toss won by", "Chose to"],
+  "Tournaments": ["Id", "Tournament", "Type", "Overs", "Status", "Teams", "Fixtures", "Played", "Created", "People", "Score or result"],
+  "People": ["Tournament", "Person", "Teams played as", "Match wins", "Status"],
+  "Fixtures": ["Tournament", "#", "Stage", "Team A", "Team B", "Status", "Result", "Scores", "Date", "Match ID", "Stage", "Person A", "Person B", "Score after match"],
+  "Series": ["Tournament", "Team A", "Wins A", "Wins B", "Team B", "Ties", "Draws", "Played", "Total", "Status"],
+  "Activity": ["Tournament", "When", "What happened"]
+};
+var TAB_ORDER = ["Players", "Teams", "Matches", "Innings", "Batting", "Bowling", "Lineups", "Ball by ball", "Live", "Current match", "Tournaments", "People", "Fixtures", "Series", "Activity"];
 
 function doPost(e) {
   var lock = LockService.getScriptLock();
@@ -63,9 +88,17 @@ function doPost(e) {
     for (var i = 0; i < tabs.length; i++) {
       var t = tabs[i];
       if (!t || !t.name) continue;
-      writeTab_(ss, String(t.name), t.head || [], t.rows || []);
-      counts[t.name] = (t.rows || []).length;
+      var head = (t.head && t.head.length) ? t.head : (HEADINGS[t.name] || []);
+      try {
+        writeTab_(ss, String(t.name), head, t.rows || []);
+        counts[t.name] = (t.rows || []).length;
+      } catch (tabErr) {
+        // One bad tab must never stop the others from being written.
+        counts[t.name] = 'error: ' + String(tabErr);
+      }
     }
+    // Tabs the app did not send this time still get their headings.
+    ensureHeadings_(ss);
 
     var props = PropertiesService.getScriptProperties();
     props.setProperty('lastSync', data.sentAt || new Date().toISOString());
@@ -80,6 +113,7 @@ function doPost(e) {
 }
 
 function doGet() {
+  try { ensureHeadings_(SpreadsheetApp.getActiveSpreadsheet()); } catch (e) {}
   var props = PropertiesService.getScriptProperties();
   var counts = {};
   try { counts = JSON.parse(props.getProperty('counts') || '{}'); } catch (x) {}
@@ -104,11 +138,39 @@ function writeTab_(ss, name, header, rows) {
   rows.forEach(function (r) { values.push(pad_(r, width)); });
 
   sh.getRange(1, 1, values.length, width).setValues(values);
+  if (header.length) styleHeading_(sh, width);
+}
 
-  if (header.length) {
-    sh.getRange(1, 1, 1, width).setFontWeight('bold');
-    sh.setFrozenRows(1);
-  }
+function styleHeading_(sh, width) {
+  var r = sh.getRange(1, 1, 1, width);
+  r.setFontWeight('bold');
+  r.setBackground('#d9efe9');
+  sh.setFrozenRows(1);
+}
+
+/* Creates any missing tab and writes the headings into any tab whose first row is empty. */
+function ensureHeadings_(ss) {
+  TAB_ORDER.forEach(function (name) {
+    var head = HEADINGS[name];
+    var sh = ss.getSheetByName(name) || ss.insertSheet(name);
+    var first = sh.getLastRow() >= 1 ? sh.getRange(1, 1, 1, head.length).getValues()[0] : [];
+    var empty = true;
+    for (var i = 0; i < first.length; i++) { if (String(first[i]) !== '') { empty = false; break; } }
+    if (empty) {
+      sh.getRange(1, 1, 1, head.length).setValues([head]);
+      styleHeading_(sh, head.length);
+    }
+  });
+  // The default empty "Sheet1" is not needed once the real tabs exist.
+  var def = ss.getSheetByName('Sheet1');
+  if (def && ss.getSheets().length > 1 && def.getLastRow() === 0) { try { ss.deleteSheet(def); } catch (e) {} }
+}
+
+/* Run this once from the editor to create every tab with its headings. */
+function setupSheets() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  ensureHeadings_(ss);
+  return 'Tabs and headings are ready.';
 }
 
 function pad_(row, width) {
@@ -116,6 +178,7 @@ function pad_(row, width) {
   for (var i = 0; i < width; i++) {
     var v = i < row.length ? row[i] : '';
     if (v === null || v === undefined) v = '';
+    if (typeof v === 'object') v = JSON.stringify(v);
     if (typeof v === 'string' && v.length > MAX_CELL) v = v.slice(0, MAX_CELL);
     r.push(v);
   }
