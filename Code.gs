@@ -23,6 +23,7 @@
  *   Fixtures       every fixture: stage, teams, who played as each, status, result, winning team, point to, score after the match
  *   Series         the running score between each pair of teams, e.g. 3-1
  *   Activity       dated log of what was done in each tournament
+ *   App data       the whole app's data, saved so every device using this Sync URL shows the same thing (do not edit)
  *
  * Setup:
  *  1. Create a Google Sheet, then open Extensions > Apps Script.
@@ -74,9 +75,10 @@ var HEADINGS = {
   "People": ["Tournament", "Person", "Teams played as", "Match wins", "Status", "Tournament ID"],
   "Fixtures": ["Tournament", "#", "Stage", "Team A", "Team B", "Status", "Result", "Scores", "Date", "Match ID", "Phase", "Person A", "Person B", "Score after match", "Winning team", "Point to", "Tournament ID"],
   "Series": ["Tournament", "Team A", "Wins A", "Wins B", "Team B", "Ties", "Draws", "Played", "Total", "Status", "Tournament ID"],
-  "Activity": ["Tournament", "When", "What happened", "Tournament ID"]
+  "Activity": ["Tournament", "When", "What happened", "Tournament ID"],
+  "App data": ["Part", "Shared app data (do not edit or delete)"]
 };
-var TAB_ORDER = ["Players", "Teams", "Matches", "Innings", "Batting", "Bowling", "Toss", "Lineups", "Ball by ball", "Live", "Current match", "Tournaments", "Tournament teams", "People", "Fixtures", "Series", "Activity"];
+var TAB_ORDER = ["Players", "Teams", "Matches", "Innings", "Batting", "Bowling", "Toss", "Lineups", "Ball by ball", "Live", "Current match", "Tournaments", "Tournament teams", "People", "Fixtures", "Series", "Activity", "App data"];
 
 function doPost(e) {
   var lock = LockService.getScriptLock();
@@ -93,6 +95,13 @@ function doPost(e) {
       return out_({ ok: true, skipped: 'older than the data already saved' });
     }
 
+    // Data from a device that has not yet loaded the newest data is ignored, so it cannot overwrite what another device saved.
+    var propsS = PropertiesService.getScriptProperties();
+    var storedAt = propsS.getProperty('stateAt') || '';
+    if (data.state && String(data.stateAt || '') < storedAt) {
+      return out_({ ok: true, skipped: 'another device saved newer data', stateAt: storedAt });
+    }
+
     var ss = getSS_();
     var tabs = data.tabs;
 
@@ -104,6 +113,14 @@ function doPost(e) {
         { name: 'Matches', head: data.head || [], rows: data.rows || [] },
         { name: 'Live', head: data.liveHead || [], rows: data.live || [] }
       ];
+    }
+
+    // The whole app state is kept in the App data tab, so other devices can load it.
+    if (data.state) {
+      var chunks = [];
+      var st = String(data.state);
+      for (var c = 0; c < st.length; c += 30000) chunks.push([chunks.length + 1, '~' + st.substr(c, 30000)]);
+      tabs.push({ name: 'App data', head: HEADINGS['App data'], rows: chunks });
     }
 
     var counts = {};
@@ -125,6 +142,7 @@ function doPost(e) {
     var props = PropertiesService.getScriptProperties();
     props.setProperty('lastSync', data.sentAt || new Date().toISOString());
     props.setProperty('counts', JSON.stringify(counts));
+    if (data.state) props.setProperty('stateAt', String(data.stateAt || ''));
 
     return out_({ ok: true, sentAt: data.sentAt || null, rows: counts });
   } catch (err) {
@@ -135,6 +153,21 @@ function doPost(e) {
 }
 
 function doGet(e) {
+  // A very small reply that only says when the shared data last changed. The app checks this often.
+  if (e && e.parameter && e.parameter.action === 'stateat') {
+    return out_({ ok: true, stateAt: PropertiesService.getScriptProperties().getProperty('stateAt') || '' });
+  }
+  // The app asks for the shared state to load what was entered on another device. This is the fast path.
+  if (e && e.parameter && e.parameter.action === 'state') {
+    try {
+      var rows = readTab_(getSS_(), 'App data');
+      rows.sort(function (a, b) { return Number(a[0]) - Number(b[0]); });
+      var text = rows.map(function (r) { return String(r[1]).substring(1); }).join('');
+      return out_({ ok: true, state: text, stateAt: PropertiesService.getScriptProperties().getProperty('stateAt') || '' });
+    } catch (errS) {
+      return out_({ ok: false, error: String(errS) });
+    }
+  }
   // Every visit makes sure all tabs exist with their headings.
   try { ensureHeadings_(getSS_()); } catch (x0) {}
   // The app asks for the saved players and teams so they can be picked for a match on any device.
@@ -161,6 +194,7 @@ function doGet(e) {
   var counts = {};
   try { counts = JSON.parse(props.getProperty('counts') || '{}'); } catch (x) {}
   info.lastSync = props.getProperty('lastSync') || 'never';
+  info.stateAt = props.getProperty('stateAt') || '';
   info.rows = counts;
   return out_(info);
 }
