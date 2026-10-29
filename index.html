@@ -428,7 +428,7 @@ let DB=null,pendingOps=[],chain=Promise.resolve();
 function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'base'});}
 const HISTKEY='cricketscorer.hist.v1',SYNCKEY='cricketscorer.sync.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
-const SYNC_URL='';
+const SYNC_URL='https://script.google.com/macros/s/AKfycby9sxDADD27KVY2o-ZAXLKYYMiu8j1kaCGTXM5hdSKtEHThyVw3Zi-FVHVo3riwREKA/exec';
 let HIST=[];const SYNC={url:SYNC_URL,status:'',sheet:'',state:'idle',last:null,hide:null,ready:true};
 function persistHist(){try{localStorage.setItem(HISTKEY,JSON.stringify(HIST));}catch(e){}}
 function loadHist(){try{const h=JSON.parse(localStorage.getItem(HISTKEY)||'null');if(Array.isArray(h)) HIST=h;}catch(e){}
@@ -591,16 +591,30 @@ function syncCards(){
   }
   return o;
 }
+function curStageName(T){
+  const order=['group','qf','sf','final'];let last='';
+  order.forEach(k=>{if(T.fixtures.some(f=>f.stage===k)) last=STAGE_NAME[k];});
+  return last||(T.fixtures.length?'Manual fixtures':'Not started');
+}
 function syncTours(){
-  const tours=[],fix=[],ser=[],log=[],people=[];
+  const tours=[],fix=[],ser=[],log=[],people=[],tteams=[];
   TOURS.forEach(T=>{
-    tours.push([T.id,T.name,TT[T.type]||T.type,T.overs==null?'':T.overs,tourFinished(T)?'Finished':'In progress',T.teams.map(t=>t.name).join(', '),T.fixtures.length,T.fixtures.filter(f=>f.done).length,T.at?String(T.at).slice(0,10):'',(T.people||[]).map(q=>q.name).join(', '),tourScore(T)]);
-    peopleScore(T).forEach(x=>people.push([T.name,x.name,T.teams.filter(t=>ownerOf(T,t.id)===x.id).map(t=>t.name).join(', '),x.w,tourFinished(T)&&autoMode(T)?'Final':'Running']));
-    T.fixtures.forEach((f,i)=>fix.push([T.name,i+1,f.label,tName(T,f.a),tName(T,f.b),f.done?'Played':(f.live?'In progress':'Not played'),f.result?f.result.text:'',f.result?(f.result.scores||[]).join(' | '):'',f.result&&f.result.at?String(f.result.at).slice(0,10):'',f.result?(f.result.rec||''):'',STAGE_NAME[f.stage]||'',f.pa?pName(T,f.pa):'',f.pb?pName(T,f.pb):'',f.done&&f.result?tourScore(T,f):'']));
-    tourPairs(T).forEach(g=>ser.push([T.name,tName(T,g.a),g.wa,g.wb,tName(T,g.b),g.ties,g.draws,g.played,g.total,g.played===g.total?'Complete':'In progress']));
-    (T.log||[]).forEach(e=>log.push([T.name,e.at,e.text]));
+    const fin=tourFinished(T);
+    tours.push([T.id,T.name,TT[T.type]||T.type,T.overs==null?'':T.overs,fin?'Finished':'In progress',T.teams.map(t=>t.name).join(', '),T.fixtures.length,T.fixtures.filter(f=>f.done).length,T.at?String(T.at).slice(0,10):'',(T.people||[]).map(q=>q.name).join(', '),tourScore(T),curStageName(T)]);
+    peopleScore(T).forEach(x=>people.push([T.name,x.name,T.teams.filter(t=>ownerOf(T,t.id)===x.id).map(t=>t.name).join(', '),x.w,fin&&autoMode(T)?'Final':'Running',T.id]));
+    const tab={};tourTable(T).forEach(r=>{tab[r.id]=r;});
+    T.teams.forEach(t=>{
+      const lt=LIB.teams.find(x=>x.id===t.id),r=tab[t.id]||{p:0,w:0,l:0,t:0,d:0};
+      tteams.push([T.name,t.name,pName(T,ownerOf(T,t.id)),lt?lt.playerIds.map(i=>libName(i)||'').filter(Boolean).join(', '):'',r.p,r.w,r.l,r.t,r.d,T.id]);
+    });
+    T.fixtures.forEach((f,i)=>{
+      const res=f.result,wt=res&&res.win==='a'?tName(T,f.a):res&&res.win==='b'?tName(T,f.b):'',wp=f.done&&res?fixWinner(T,f):null;
+      fix.push([T.name,i+1,f.label,tName(T,f.a),tName(T,f.b),f.done?'Played':(f.live?'In progress':'Not played'),res?res.text:'',res?(res.scores||[]).join(' | '):'',res&&res.at?String(res.at).slice(0,10):'',res?(res.rec||''):'',STAGE_NAME[f.stage]||'',f.pa?pName(T,f.pa):'',f.pb?pName(T,f.pb):'',f.done&&res?tourScore(T,f):'',wt,wp?pName(T,wp):'',T.id]);
+    });
+    tourPairs(T).forEach(g=>ser.push([T.name,tName(T,g.a),g.wa,g.wb,tName(T,g.b),g.ties,g.draws,g.played,g.total,g.played===g.total?'Complete':'In progress',T.id]));
+    (T.log||[]).forEach(e=>log.push([T.name,e.at,e.text,T.id]));
   });
-  return {tours:tours,fix:fix,ser:ser,log:log,people:people};
+  return {tours:tours,fix:fix,ser:ser,log:log,people:people,tteams:tteams};
 }
 function buildSync(){
   const nm=id=>libName(id)||'';
@@ -627,7 +641,7 @@ function buildSync(){
     try{const j=tossData(),nm=M.teams[0].name+' v '+M.teams[1].name+' (in progress)';tossRows.unshift(['In progress',(M.recAt||M.savedAt||new Date().toISOString()).slice(0,10),nm,M.format||'',j.mode,j.caller,j.call,j.landed,j.winner,j.choice,tossText(),'']);}catch(e){}
   }
   const players=LIB.players.map(x=>[x.id,x.name,LIB.teams.filter(t=>t.playerIds.indexOf(x.id)>=0).map(t=>t.name).join(', ')]);
-  const teams=LIB.teams.map(x=>[x.id,x.name,x.playerIds.map(nm).join(', '),nm(x.capId),nm(x.wkId)]);
+  const teams=LIB.teams.map(x=>[x.id,x.name,x.playerIds.map(nm).filter(Boolean).join(', '),nm(x.capId),nm(x.wkId),x.playerIds.filter(i=>libName(i)!=null).join(',')]);
   const liveHead=['Match','Innings','Event #','Type','Ball kind','Runs','Bowler','Wicket','Batter out','Fielder','Bowler id'];
   const o={app:'CricketScorer',
     players:players.map(r=>r.slice(0,2)),
@@ -636,7 +650,7 @@ function buildSync(){
     liveHead:liveHead,live:live,
     tabs:[
       {name:'Players',head:['Id','Name','Teams'],rows:players},
-      {name:'Teams',head:['Id','Team','Players','Captain','Wicketkeeper'],rows:teams},
+      {name:'Teams',head:['Id','Team','Players','Captain','Wicketkeeper','Player ids'],rows:teams},
       {name:'Matches',head:['Match ID'].concat(CSVHEAD),rows:HIST.slice().reverse().map(r=>[r.id].concat(histRow(r)))},
       {name:'Innings',head:['Match ID','Date','Match','Innings','Batting team','Runs','Wickets','Overs','Extras','Fall of wickets'],rows:c.inn},
       {name:'Batting',head:['Match ID','Date','Match','Innings','Team','Batter','How out','Runs','Balls','4s','6s','Strike rate'],rows:c.bat},
@@ -646,11 +660,12 @@ function buildSync(){
       {name:'Ball by ball',head:['Match ID','Date','Match','Innings','Event #','Type','Ball kind','Runs','Bowler','Wicket','Batter out','Fielder'],rows:c.bb},
       {name:'Live',head:liveHead,rows:live},
       {name:'Current match',head:['Match','Format','Overs','Toss','Tournament','Score','Status','Team A','Captain A','Wicketkeeper A','Team B','Captain B','Wicketkeeper B','Toss called by','Call','Bat flip landed','Toss won by','Chose to'],rows:cur},
-      {name:'Tournaments',head:['Id','Tournament','Type','Overs','Status','Teams','Fixtures','Played','Created','People','Score or result'],rows:t.tours},
-      {name:'People',head:['Tournament','Person','Teams played as','Match wins','Status'],rows:t.people},
-      {name:'Fixtures',head:['Tournament','#','Stage','Team A','Team B','Status','Result','Scores','Date','Match ID','Stage','Person A','Person B','Score after match'],rows:t.fix},
-      {name:'Series',head:['Tournament','Team A','Wins A','Wins B','Team B','Ties','Draws','Played','Total','Status'],rows:t.ser},
-      {name:'Activity',head:['Tournament','When','What happened'],rows:t.log}
+      {name:'Tournaments',head:['Id','Tournament','Type','Overs','Status','Teams','Fixtures','Played','Created','People','Score or result','Current stage'],rows:t.tours},
+      {name:'Tournament teams',head:['Tournament','Team','Played by','Players','Played','Won','Lost','Tied','Drawn','Tournament ID'],rows:t.tteams},
+      {name:'People',head:['Tournament','Person','Teams played as','Match wins','Status','Tournament ID'],rows:t.people},
+      {name:'Fixtures',head:['Tournament','#','Stage','Team A','Team B','Status','Result','Scores','Date','Match ID','Phase','Person A','Person B','Score after match','Winning team','Point to','Tournament ID'],rows:t.fix},
+      {name:'Series',head:['Tournament','Team A','Wins A','Wins B','Team B','Ties','Draws','Played','Total','Status','Tournament ID'],rows:t.ser},
+      {name:'Activity',head:['Tournament','When','What happened','Tournament ID'],rows:t.log}
     ]};
   const sig=JSON.stringify(o);o.sentAt=new Date().toISOString();
   return {sig:sig,body:JSON.stringify(o),sentAt:o.sentAt};
@@ -669,7 +684,7 @@ function syncSoon(){
   if(!SYNC.url||SYNC.ready===false) return;
   const b=buildSync();
   if(b.sig===SYNC.last&&SYNC.state!=='fail') return;
-  setSync('syncing');clearTimeout(syncT);syncT=setTimeout(()=>syncPush(false),700);
+  setSync('syncing');clearTimeout(syncT);syncT=setTimeout(()=>syncPush(false),250);
 }
 let syncTry=0,syncRetryT=null,syncUrlT=null;
 /* Players and teams saved in the spreadsheet (the Players and Teams tabs) are brought into the app, so they can be picked for a match on any device.
@@ -690,16 +705,20 @@ function mergeSheetLib(d){
   (d.teams||[]).forEach(r=>{
     const name=normName(r&&r[1]);if(!name) return;
     const names=String(r[2]||'').split(',').map(normName).filter(Boolean);
-    const ids=uniq(names.map(nm=>ensure(nm)));
+    let ids;
+    const idList=String(r[5]||'').split(',').map(s=>s.trim()).filter(Boolean);
+    const idNames=idList.map(libName);
+    if(idList.length&&idNames.every(Boolean)&&idNames.join(', ').toLowerCase()===names.join(', ').toLowerCase()) ids=uniq(idList);
+    else ids=uniq(names.map(nm=>ensure(nm)));
     const capName=normName(r[3]),wkName=normName(r[4]);
     const cap=capName&&byName(capName)?byName(capName).id:'',wk=wkName&&byName(wkName)?byName(wkName).id:'';
     const t=LIB.teams.find(x=>x.id===String(r[0])||x.name.toLowerCase()===name.toLowerCase());
     if(!t){
       const id=r[0]&&!LIB.teams.some(x=>x.id===String(r[0]))?String(r[0]):newId('t');
-      libPutTeam(id,name,ids.slice(0,52),cap,wk);n++;
+      libPutTeam(id,name,ids.slice(0,55),cap,wk);n++;
     }else{
       const add=ids.filter(i=>t.playerIds.indexOf(i)<0);
-      if(add.length){libPutTeam(t.id,t.name,t.playerIds.concat(add).slice(0,52),t.capId||cap,t.wkId||wk);n++;}
+      if(add.length){libPutTeam(t.id,t.name,t.playerIds.concat(add).slice(0,55),t.capId||cap,t.wkId||wk);n++;}
     }
   });
   return n;
@@ -732,7 +751,7 @@ function verifySent(b,tries){
     if(!st||typeof st!=='object') return {r:'unreadable'};
     if(st.ok===false) return {r:'problem',msg:st.problem||st.error||''};
     if(st.lastSync===b.sentAt) return {r:'ok',st:st};
-    if(tries<3) return new Promise(res=>setTimeout(res,1500)).then(()=>verifySent(b,tries+1));
+    if(tries<5) return new Promise(res=>setTimeout(res,2000)).then(()=>verifySent(b,tries+1));
     return {r:'missing',st:st};
   });
 }
@@ -752,9 +771,13 @@ function syncPush(force,leaving){
   if(!SYNC.url||SYNC.ready===false) return Promise.resolve();
   let u;try{u=new URL(SYNC.url);if(u.protocol!=='https:'&&u.protocol!=='http:') throw 0;}catch(e){syncTry=4;syncFail('That Sync URL does not look like a web address.');return Promise.resolve();}
   if(/\/dev\/?$/.test(u.pathname)){syncTry=4;syncFail('That Sync URL ends in /dev. Use the web app URL that ends in /exec.');return Promise.resolve();}
+  /* Send one copy at a time, so an older copy can never reach the sheet after a newer one. A change made meanwhile is sent right after. */
+  if(!leaving&&SYNC.busy&&Date.now()<SYNC.busy){SYNC.again=true;return Promise.resolve();}
   let b;try{b=buildSync();}catch(e){syncFail('Could not prepare the data to send ('+(e&&e.message?e.message:'error')+').');return Promise.resolve();}
   const my=++syncSeq;
   setSync('syncing');
+  if(!leaving) SYNC.busy=Date.now()+30000;
+  const release=()=>{if(leaving) return;SYNC.busy=0;if(SYNC.again){SYNC.again=false;setTimeout(()=>syncPush(true),30);}};
   const opts={method:'POST',mode:'no-cors',redirect:'follow',credentials:'omit',referrerPolicy:'no-referrer',headers:{'Content-Type':'text/plain;charset=utf-8'},body:b.body};
   /* keepalive is only worth it while the page is closing, and it has a small size limit. */
   if(leaving&&b.body.length<60000) opts.keepalive=true;
@@ -767,18 +790,19 @@ function syncPush(force,leaving){
     if(leaving&&beacon()) return;
     syncFail('Could not reach the Sync URL. Check your internet connection and that the web app is deployed with access set to Anyone. It will try again on its own.');
   };
-  let p;try{p=fetch(u.href,opts);}catch(e){failed();return Promise.resolve();}
+  let p;try{p=fetch(u.href,opts);}catch(e){failed();release();return Promise.resolve();}
   if(leaving) return p.then(()=>{if(my!==syncSeq) return;syncDone(b);},failed);
   return p.then(()=>{
     if(my!==syncSeq) return;
     return verifySent(b,0).then(v=>{
       if(my!==syncSeq) return;
-      if(v.r==='ok') syncDone(b,'and confirmed by your sheet.');
+      if(v.r==='ok'){SYNC.miss=0;syncDone(b,'and confirmed by your sheet.');}
       else if(v.r==='unreadable') syncDone(b,'(sent, but this page could not read the sheet script\'s reply, so check your sheet).');
       else if(v.r==='problem') syncFail('The script could not open your spreadsheet: '+v.msg);
-      else syncFail('The script answered but did not save the data. In Apps Script use Deploy > Manage deployments > Edit > New version, with "Execute as: Me" and "Who has access: Anyone".');
+      else if(!SYNC.miss){SYNC.miss=1;SYNC.again=true;}
+      else{SYNC.miss=0;syncDone(b,'(sent, but the sheet script did not confirm it yet. If the sheet is empty, redeploy Code.gs with Deploy > Manage deployments > Edit > New version, "Execute as: Me", "Who has access: Anyone").');}
     });
-  },failed);
+  },failed).then(release,release);
 }
 async function exportSheet(){
   SYNC.sheet='';
@@ -1006,7 +1030,7 @@ function logo(){return '<svg width="42" height="25" viewBox="0 0 44 26" aria-hid
   '<path d="M24.2 15.4 Q33 13.4 41.8 15.4" fill="none" stroke="#F3E9D8" stroke-width=".9" stroke-linecap="round"/></svg>';}
 
 /* ---------- squad picker (used in match setup and in Players & teams) ---------- */
-function maxSel(k){return k==='e'?52:16;}
+function maxSel(k){return k==='e'?55:16;}
 function iplSquad(k){return k!=='e'&&ui.setup.fmt==='IPL';}
 function pk(k){return k==='e'?ui.squads.editor:ui.setup.slots[+k];}
 function otherSel(k){return (k==='0'||k==='1')?ui.setup.slots[1-(+k)].sel:[];}
@@ -1031,7 +1055,7 @@ function pickerHtml(k){
       '<button class="btn small" data-act="move" data-k="'+k+'" data-i="'+i+'" data-d="-1" aria-label="Move up"'+(i===0?' disabled':'')+'>&#9650;</button>'+
       '<button class="btn small" data-act="move" data-k="'+k+'" data-i="'+i+'" data-d="1" aria-label="Move down"'+(i===p.sel.length-1?' disabled':'')+'>&#9660;</button>'+
       '<button class="btn small danger" data-act="unpick" data-k="'+k+'" data-id="'+esc(id)+'" aria-label="Remove '+esc(libName(id))+' from this team">&times;</button></li>').join('')+
-      '</ol><p class="note">'+(k==='e'?'The full squad can have up to 52 players. When you pick a team for a match you choose up to 16 of them.':''+(iplSquad(k)?'IPL needs all 16: the 11 who play and 5 substitutes, because each team uses an impact player.':'Pick 11 to 16 players for this match. The 5 extra substitutes are optional.')+' The first 11 play and the rest are substitutes. Batters go in at the fall of a wicket in this order, and you can pick someone else at that moment.')+' Tap a name to rename a player. The cross removes them from this team and keeps them saved.</p></div>':'')+
+      '</ol><p class="note">'+(k==='e'?'The full squad can have up to 55 players. When you pick a team for a match you choose up to 16 of them.':''+(iplSquad(k)?'IPL needs all 16: the 11 who play and 5 substitutes, because each team uses an impact player.':'Pick 11 to 16 players for this match. The 5 extra substitutes are optional.')+' The first 11 play and the rest are substitutes. Batters go in at the fall of a wicket in this order, and you can pick someone else at that moment.')+' Tap a name to rename a player. The cross removes them from this team and keeps them saved.</p></div>':'')+
     (k!=='e'&&p.sel.length?'<div class="grid2">'+roleSel('cap','Captain',p.cap||'')+roleSel('wkp','Wicketkeeper',p.wk||'')+'</div><p class="note">Caught behind goes straight to the wicketkeeper, so you do not pick a fielder for it.</p>':'')+
     '<div class="addrow"><input id="np-'+k+'" data-k="'+k+'" data-f="newp" value="'+esc(p.newp)+'" maxlength="40" autocomplete="off" placeholder="Add a player not on the list" aria-label="New player name"><button class="btn small primary" data-act="add-player" data-k="'+k+'">Add &amp; select</button></div>';
 }
@@ -1109,19 +1133,20 @@ function addPlayerTo(k){
     holder.newp='';ui.focus='np-lib';
   }
 }
-function saveTeam(k,quiet){
+function saveTeam(k,quiet,min){
+  min=min==null?2:min;
   const p=pk(k);
   const name=normName(p.name);
   if(!name){if(!quiet) toast('Give the team a name');return null;}
   const ids=uniq(p.sel.filter(id=>libName(id)!=null));
-  if(ids.length<2){if(!quiet) toast('Pick at least 2 players');return null;}
+  if(ids.length<min){if(!quiet) toast('Pick at least 2 players');return null;}
   let ex=p.teamId?LIB.teams.find(t=>t.id===p.teamId):null;
   if(!ex) ex=LIB.teams.find(t=>t.name.toLowerCase()===name.toLowerCase());
   const id=ex?ex.id:newId('t');
   if(ex&&k!=='e'){
     /* Starting a match picks up to 16 from the saved squad, so keep the whole saved squad and only add anyone new. */
     const full=ex.playerIds.filter(i=>libName(i)!=null);
-    ids.forEach(i=>{if(full.indexOf(i)<0&&full.length<52) full.push(i);});
+    ids.forEach(i=>{if(full.indexOf(i)<0&&full.length<55) full.push(i);});
     const cp=ids.indexOf(p.cap)>=0?p.cap:(full.indexOf(ex.capId)>=0?ex.capId:''),wp=ids.indexOf(p.wk)>=0?p.wk:(full.indexOf(ex.wkId)>=0?ex.wkId:'');
     libPutTeam(id,name,full,cp,wp);
   }else libPutTeam(id,name,ids,ids.indexOf(p.cap)>=0?p.cap:'',ids.indexOf(p.wk)>=0?p.wk:'');
@@ -1130,6 +1155,12 @@ function saveTeam(k,quiet){
   return id;
 }
 
+/* In the Players & teams editor every change is saved and sent to the sheet at once, however few players the squad has. */
+function autoSaveEditor(){
+  const p=ui.squads&&ui.squads.editor;
+  if(!p||!normName(p.name)) return;
+  saveTeam('e',true,0);
+}
 /* ---------- tournaments ----------
    A tournament is a set of saved teams plus a schedule of fixtures that you build and order yourself.
    Playing a fixture opens the normal match setup for those two teams. When the match ends, its result
@@ -2137,7 +2168,9 @@ function act(a,d){
   if(a!=='copy') ui.copyText=null;
   if(histAct(a,d)) return;
   if(!M){
-    if(actLib(a,d)||a==='start') render();
+    const ch=actLib(a,d);
+    if(d&&d.k==='e'&&(a==='add-player'||a==='pick-toggle'||a==='unpick'||a==='move')) autoSaveEditor();
+    if(ch||a==='start') render();
     return;
   }
   const inn=cur();
@@ -2232,6 +2265,22 @@ function act(a,d){
   save();render();
 }
 
+function keepBarVisible(id){
+  const fix=()=>{
+    const el=$(id);if(!el) return;
+    const bar=el.closest('.addrow')||el,r=bar.getBoundingClientRect();
+    const vv=window.visualViewport,h=vv?vv.height:(window.innerHeight||document.documentElement.clientHeight);
+    if(r.bottom>h-16||r.top<8){
+      let sp=bar.parentElement;
+      while(sp&&sp!==document.body){const cs=getComputedStyle(sp);if(/(auto|scroll)/.test(cs.overflowY)&&sp.scrollHeight>sp.clientHeight) break;sp=sp.parentElement;}
+      if(sp&&sp!==document.body&&sp!==document.documentElement){const pr=sp.getBoundingClientRect();sp.scrollTop+=r.bottom-pr.bottom+16;}
+      else window.scrollBy(0,r.bottom-h+16);
+    }
+  };
+  fix();
+  if(window.requestAnimationFrame) requestAnimationFrame(fix);
+  setTimeout(fix,120);
+}
 function render(){
   const ae=document.activeElement;
   const fid=(ae&&ae.id&&$('app').contains(ae))?ae.id:null;
@@ -2247,8 +2296,11 @@ function render(){
       if(want===fid&&!ui.focus&&ss!=null){try{el.setSelectionRange(ss,se);}catch(e){}}
     }
   }
+  const wasFocus=ui.focus;
   ui.focus=null;
   window.scrollTo(0,ui.top?0:sy);ui.top=false;
+  /* After adding a player, scroll so the whole add-player bar (box and button) is in sight at the bottom of the screen. */
+  if(wasFocus&&String(wasFocus).indexOf('np-')===0) keepBarVisible(wasFocus);
   const cb=$('copybox');if(cb){cb.focus();cb.select();}
 }
 
@@ -2289,6 +2341,7 @@ document.addEventListener('change',e=>{
   const t=e.target,d=t.dataset||{};
   if(!M){
     if(d.s){ui.setup[d.s]=t.value;if(d.s==='overs'){const f=ui.setup.fmt;if(f!=='Custom'){ui.setup.fmt=((f==='IPL'||f==='T20')&&t.value==='20')?f:t.value==='20'?'T20':t.value==='50'?'ODI':'Custom';}render();}return;}
+    if(d.f==='name'&&d.k==='e'){autoSaveEditor();return;}
     if(d.f==='tp-owner'){
       const T=curTour();
       if(T){
@@ -2309,11 +2362,12 @@ document.addEventListener('change',e=>{
     }
     if(d.f&&d.f.indexOf('tm-')===0&&ui.tm){ui.tm[d.f.slice(3)]=t.value;return;}
     if(d.f==='team'){pickTeam(d.k,t.value);render();}
-    else if(d.f==='cap'||d.f==='wkp'){const p=pk(d.k);if(d.f==='cap') p.cap=t.value;else p.wk=t.value;}
+    else if(d.f==='cap'||d.f==='wkp'){const p=pk(d.k);if(d.f==='cap') p.cap=t.value;else p.wk=t.value;if(d.k==='e') autoSaveEditor();}
     else if(d.f==='tick'){
       const p=pk(d.k),i=p.sel.indexOf(d.id);
       if(t.checked&&i<0&&otherSel(d.k).indexOf(d.id)<0){if(p.sel.length>=maxSel(d.k)) toast('Up to '+maxSel(d.k)+' players can be selected here');else p.sel.push(d.id);}
       else if(!t.checked&&i>=0) p.sel.splice(i,1);
+      if(d.k==='e') autoSaveEditor();
       render();
     }else if(d.f==='rename'){
       const name=normName(t.value),cur=LIB.players.find(p=>p.id===d.id);

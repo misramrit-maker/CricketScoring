@@ -17,9 +17,10 @@
  *   Ball by ball   every ball and event of every match, finished or in progress
  *   Live           ball by ball record of the match being scored
  *   Current match  the match in progress: teams, captains, keepers, toss, score
- *   Tournaments    every tournament with its status, its people and its score or result
+ *   Tournaments    every tournament with its status, current stage, its people and its score or result
+ *   Tournament teams  each team in each tournament: who plays as it, its players and its record
  *   People         each person in a tournament: teams played as, match wins
- *   Fixtures       every fixture: stage, teams, who played as each, status, result, score after the match
+ *   Fixtures       every fixture: stage, teams, who played as each, status, result, winning team, point to, score after the match
  *   Series         the running score between each pair of teams, e.g. 3-1
  *   Activity       dated log of what was done in each tournament
  *
@@ -41,7 +42,7 @@
  * Players and teams typed or saved in the Players and Teams tabs are also read back
  * by the app, so they appear in the team and player pickers when starting a match.
  * In the Teams tab, put the team name in column B and the player names, separated
- * by commas, in column C (captain in D and wicketkeeper in E are optional).
+ * by commas, in column C (captain in D and wicketkeeper in E are optional; column F is filled in by the app).
  *
  * Open the web app URL in a browser to check it is live. It shows when the
  * last sync arrived and how many rows each tab holds.
@@ -58,7 +59,7 @@ var MAX_CELL = 45000; // Google Sheets allows 50,000 characters in a cell.
 /* The column headings of every tab, so they are always written even when a tab has no rows yet. */
 var HEADINGS = {
   "Players": ["Id", "Name", "Teams"],
-  "Teams": ["Id", "Team", "Players", "Captain", "Wicketkeeper"],
+  "Teams": ["Id", "Team", "Players", "Captain", "Wicketkeeper", "Player ids"],
   "Matches": ["Match ID", "Date", "Team A", "Team B", "Format", "Overs", "Toss", "Scores", "Result", "Category", "Tournament", "Toss called by", "Call", "Bat flip landed", "Toss won by", "Chose to"],
   "Innings": ["Match ID", "Date", "Match", "Innings", "Batting team", "Runs", "Wickets", "Overs", "Extras", "Fall of wickets"],
   "Batting": ["Match ID", "Date", "Match", "Innings", "Team", "Batter", "How out", "Runs", "Balls", "4s", "6s", "Strike rate"],
@@ -68,13 +69,14 @@ var HEADINGS = {
   "Ball by ball": ["Match ID", "Date", "Match", "Innings", "Event #", "Type", "Ball kind", "Runs", "Bowler", "Wicket", "Batter out", "Fielder"],
   "Live": ["Match", "Innings", "Event #", "Type", "Ball kind", "Runs", "Bowler", "Wicket", "Batter out", "Fielder", "Bowler id"],
   "Current match": ["Match", "Format", "Overs", "Toss", "Tournament", "Score", "Status", "Team A", "Captain A", "Wicketkeeper A", "Team B", "Captain B", "Wicketkeeper B", "Toss called by", "Call", "Bat flip landed", "Toss won by", "Chose to"],
-  "Tournaments": ["Id", "Tournament", "Type", "Overs", "Status", "Teams", "Fixtures", "Played", "Created", "People", "Score or result"],
-  "People": ["Tournament", "Person", "Teams played as", "Match wins", "Status"],
-  "Fixtures": ["Tournament", "#", "Stage", "Team A", "Team B", "Status", "Result", "Scores", "Date", "Match ID", "Stage", "Person A", "Person B", "Score after match"],
-  "Series": ["Tournament", "Team A", "Wins A", "Wins B", "Team B", "Ties", "Draws", "Played", "Total", "Status"],
-  "Activity": ["Tournament", "When", "What happened"]
+  "Tournaments": ["Id", "Tournament", "Type", "Overs", "Status", "Teams", "Fixtures", "Played", "Created", "People", "Score or result", "Current stage"],
+  "Tournament teams": ["Tournament", "Team", "Played by", "Players", "Played", "Won", "Lost", "Tied", "Drawn", "Tournament ID"],
+  "People": ["Tournament", "Person", "Teams played as", "Match wins", "Status", "Tournament ID"],
+  "Fixtures": ["Tournament", "#", "Stage", "Team A", "Team B", "Status", "Result", "Scores", "Date", "Match ID", "Phase", "Person A", "Person B", "Score after match", "Winning team", "Point to", "Tournament ID"],
+  "Series": ["Tournament", "Team A", "Wins A", "Wins B", "Team B", "Ties", "Draws", "Played", "Total", "Status", "Tournament ID"],
+  "Activity": ["Tournament", "When", "What happened", "Tournament ID"]
 };
-var TAB_ORDER = ["Players", "Teams", "Matches", "Innings", "Batting", "Bowling", "Toss", "Lineups", "Ball by ball", "Live", "Current match", "Tournaments", "People", "Fixtures", "Series", "Activity"];
+var TAB_ORDER = ["Players", "Teams", "Matches", "Innings", "Batting", "Bowling", "Toss", "Lineups", "Ball by ball", "Live", "Current match", "Tournaments", "Tournament teams", "People", "Fixtures", "Series", "Activity"];
 
 function doPost(e) {
   var lock = LockService.getScriptLock();
@@ -83,6 +85,12 @@ function doPost(e) {
     var data = JSON.parse(e.postData.contents);
     if (data.app !== 'CricketScorer') {
       return out_({ ok: false, error: 'Not a CricketScorer payload' });
+    }
+
+    // A copy that was sent earlier than the one already saved is stale. Ignore it so it cannot overwrite newer data.
+    var prev = PropertiesService.getScriptProperties().getProperty('lastSync');
+    if (data.sentAt && prev && String(data.sentAt) < String(prev)) {
+      return out_({ ok: true, skipped: 'older than the data already saved' });
     }
 
     var ss = getSS_();
@@ -169,7 +177,6 @@ function readTab_(ss, name) {
 
 function writeTab_(ss, name, header, rows) {
   var sh = ss.getSheetByName(name) || ss.insertSheet(name);
-  sh.clearContents();
 
   var width = header.length;
   rows.forEach(function (r) { if (r.length > width) width = r.length; });
@@ -179,8 +186,16 @@ function writeTab_(ss, name, header, rows) {
   if (header.length) values.push(pad_(header, width));
   rows.forEach(function (r) { values.push(pad_(r, width)); });
 
+  // A tab whose content has not changed is left alone, which keeps every save fast.
+  var props = PropertiesService.getScriptProperties();
+  var key = 'h_' + name;
+  var hash = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, JSON.stringify(values)));
+  if (props.getProperty(key) === hash && sh.getLastRow() >= values.length && sh.getRange(1, 1).getValue() !== '') return;
+  sh.clearContents();
+
   sh.getRange(1, 1, values.length, width).setValues(values);
   if (header.length) styleHeading_(sh, width);
+  props.setProperty(key, hash);
 }
 
 function styleHeading_(sh, width) {
