@@ -428,7 +428,7 @@ let DB=null,pendingOps=[],chain=Promise.resolve();
 function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'base'});}
 const HISTKEY='cricketscorer.hist.v1',SYNCKEY='cricketscorer.sync.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
-const SYNC_URL='';
+const SYNC_URL='https://script.google.com/macros/s/AKfycbzYjm71bYWA4ycbm_DVM6v3jQDvDFi7M6j5fp_LOQSTe0qcQnLpum0_gMrCg7nM1ISYBw/exec';
 let HIST=[];const SYNC={url:SYNC_URL,status:'',sheet:'',state:'idle',last:null,hide:null,ready:true};
 const STATEKEY='cricketscorer.stateat.v1';
 let STATEAT='';try{STATEAT=localStorage.getItem(STATEKEY)||'';}catch(e){}
@@ -754,6 +754,7 @@ function mergeSheetLib(d){
   const ensure=(nm,wantId)=>{
     let p=byName(nm);
     if(!p){
+      if(wantId&&DEL['p:'+String(wantId)]) return '';
       const id=wantId&&!LIB.players.some(x=>x.id===String(wantId))?String(wantId):newId('p');
       libPutPlayer(id,nm);p={id:id,name:nm};n++;
     }
@@ -767,11 +768,12 @@ function mergeSheetLib(d){
     const idList=String(r[5]||'').split(',').map(s=>s.trim()).filter(Boolean);
     const idNames=idList.map(libName);
     if(idList.length&&idNames.every(Boolean)&&idNames.join(', ').toLowerCase()===names.join(', ').toLowerCase()) ids=uniq(idList);
-    else ids=uniq(names.map(nm=>ensure(nm)));
+    else ids=uniq(names.map(nm=>ensure(nm)).filter(Boolean));
     const capName=normName(r[3]),wkName=normName(r[4]);
     const cap=capName&&byName(capName)?byName(capName).id:'',wk=wkName&&byName(wkName)?byName(wkName).id:'';
     const t=LIB.teams.find(x=>x.id===String(r[0])||x.name.toLowerCase()===name.toLowerCase());
     if(!t){
+      if(r[0]&&DEL['t:'+String(r[0])]) return;
       const id=r[0]&&!LIB.teams.some(x=>x.id===String(r[0]))?String(r[0]):newId('t');
       libPutTeam(id,name,ids.slice(0,55),cap,wk);n++;
     }else{
@@ -825,7 +827,7 @@ function applyState(st){
     }
     if(st.at&&String(st.at)>String(STATEAT)){STATEAT=st.at;try{localStorage.setItem(STATEKEY,STATEAT);}catch(e){}}
   }finally{APPLYING=false;}
-  if(canon(coreObj())!==beforeAll){render();toast('Updated with the latest from your other device');}
+  if(canon(coreObj())!==beforeAll){render();toast('Updated with the latest from the sheet or another device');}
   /* Anything this device has that the sheet does not is sent straight back, so nothing is lost. */
   syncSoon();
 }
@@ -858,6 +860,21 @@ function syncStart(then){
   pullState(true).catch(()=>false).then(r=>{if(r==='none'&&!STATEAT) stamp();return importLib();}).then(()=>{SYNC.ready=true;then();});
 }
 /* Asks the script what it last received. A GET reply can be read, so this shows whether the sheet really got the data. */
+/* Brings in anything the sheet has that this device lacks, sends anything the sheet lacks, then reports whether both sides hold the same amount of data. */
+function syncBoth(){
+  if(!SYNC.url) return Promise.resolve('Paste the Sync URL first.');
+  return pullState(true).then(r=>importLib().then(()=>r)).then(r=>{
+    if(r===false&&!SYNC.url) return null;
+    return syncPush(true);
+  }).then(()=>sheetStatus('counts')).then(c=>{
+    if(!c||c.ok===false||!c.sheet) return 'Could not read the sheet to compare. Check the connection and that the latest Code.gs is deployed.';
+    const app={players:LIB.players.length,teams:LIB.teams.length,matches:HIST.length,tournaments:TOURS.length};
+    const names={players:'players',teams:'teams',matches:'matches',tournaments:'tournaments'};
+    const line=o=>Object.keys(names).map(k=>(o[k]==null?'?':o[k])+' '+names[k]).join(', ');
+    const diff=Object.keys(names).filter(k=>c.sheet[k]!==app[k]);
+    return (diff.length?'Still differs ('+diff.join(', ')+'). It may be a send in progress, so try again in a few seconds. ':'App and sheet are in step. ')+'App: '+line(app)+'. Sheet: '+line(c.sheet)+'.';
+  }).catch(()=>'Could not finish syncing. Check the connection.');
+}
 function sheetStatus(action){
   let u;try{u=new URL(SYNC.url);}catch(e){return Promise.resolve(null);}
   u.searchParams.set('action',action||'status');
@@ -1020,8 +1037,8 @@ function histHtml(){
     '<section class="panel pad"><h1>Match history</h1>'+catBtns('hist-filter',ui.histFilter||'all')+(LIB.mode==='db'?'<p class="note">Saved with this app and kept between sessions.</p>':'<p class="note">Saved in this browser only.</p>')+items+'</section>'+
     '<section class="panel pad" id="syncpanel"><h3>Spreadsheet sync</h3>'+
     '<label class="field"><span>Sync URL</span><input id="syncurl" type="url" inputmode="url" autocomplete="off" placeholder="Paste your Sync URL here" value="'+esc(SYNC.url)+'" data-f="sync"></label>'+
-    '<p class="note">All your data (players, teams, matches and the live ball-by-ball) is sent to this address whenever anything changes.'+(SYNC.status?' <b>'+esc(SYNC.status)+'</b>':'')+'</p>'+
-    '<div class="actions"><button class="btn" data-act="sync-all"'+(SYNC.url?'':' disabled')+'>Send everything now</button><button class="btn" data-act="sync-test"'+(SYNC.url?'':' disabled')+'>Check connection and add headings</button></div>'+
+    '<p class="note">All your data (players, teams, matches and the live ball-by-ball) is sent to this address whenever anything changes. Players and teams you change in the sheet are loaded back into the app within a few seconds.'+(SYNC.status?' <b>'+esc(SYNC.status)+'</b>':'')+'</p>'+
+    '<div class="actions"><button class="btn" data-act="sync-all"'+(SYNC.url?'':' disabled')+'>Send everything now</button><button class="btn" data-act="sync-pull"'+(SYNC.url?'':' disabled')+'>Sync both ways now</button><button class="btn" data-act="sync-test"'+(SYNC.url?'':' disabled')+'>Check connection and add headings</button></div>'+
     '<h3 style="margin-top:16px">Save the whole history</h3>'+
     '<div class="actions" style="margin-top:0"><button class="btn primary" data-act="export-sheet"'+(HIST.length?'':' disabled')+'>Save to Google Sheet</button><button class="btn" data-act="export-csv"'+(HIST.length?'':' disabled')+'>Download CSV</button></div>'+
     (SYNC.sheet?'<p class="note"><b>'+esc(SYNC.sheet)+'</b></p>':'')+'</section></div>';
@@ -1042,6 +1059,10 @@ function histAct(a,d){
     case 'hist-del-arm':ui.armed='h:'+d.id;break;
     case 'hist-del':{const id=d.id;HIST=HIST.filter(x=>x.id!==id);tomb('m:'+id);persistHist();syncSoon();ui.armed=null;remote(db=>db.doc('matches/'+id).delete());break;}
     case 'sync-all':syncPush(true);return true;
+    case 'sync-pull':{
+      SYNC.status='Syncing both ways...';
+      syncBoth().then(msg=>{SYNC.status=msg;if(ui.hist) render();});
+      return true;}
     case 'sync-test':{
       SYNC.status='Checking the connection...';
       sheetStatus('status').then(st=>{
