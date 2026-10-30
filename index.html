@@ -492,7 +492,9 @@ function pendingHtml(){
 function stamp(){if(APPLYING) return;STATEAT=new Date().toISOString();try{localStorage.setItem(STATEKEY,STATEAT);}catch(e){}}
 function persistHist(){stamp();try{localStorage.setItem(HISTKEY,JSON.stringify(HIST));}catch(e){}}
 function loadHist(){try{const h=JSON.parse(localStorage.getItem(HISTKEY)||'null');if(Array.isArray(h)) HIST=h;}catch(e){}
-  try{const y=JSON.parse(localStorage.getItem(SYNCKEY)||'null');if(y&&typeof y.url==='string'&&y.url) SYNC.url=y.url;}catch(e){}}
+  try{const y=JSON.parse(localStorage.getItem(SYNCKEY)||'null');if(y&&typeof y.url==='string'&&y.url) SYNC.url=y.url;}catch(e){}
+  loadSyncLink();}
+function loadSyncLink(){try{const q=new URLSearchParams(location.search).get('sync');if(q&&/^https:\/\//.test(q)){SYNC.url=q;persistSync();history.replaceState(null,'',location.pathname+location.hash);}}catch(e){}}
 function persistSync(){try{localStorage.setItem(SYNCKEY,JSON.stringify({url:SYNC.url}));}catch(e){}}
 function persistLib(){stamp();try{localStorage.setItem(LIBKEY,JSON.stringify({players:LIB.players,teams:LIB.teams}));}catch(e){}}
 function loadLib(){
@@ -810,6 +812,12 @@ function applyState(st){
     const lib=st.lib||{};
     LIB.players=mergeRecs(LIB.players,lib.players,'p:').filter(p=>p.name);
     LIB.teams=mergeRecs(LIB.teams,lib.teams,'t:');
+    /* The same name added on two devices is one player: keep the oldest entry, point teams at it, and remove the repeat everywhere. */
+    {const seenN={},remap={};
+     LIB.players.slice().sort((a,b)=>String(a.id)<String(b.id)?-1:String(a.id)>String(b.id)?1:0).forEach(p=>{const k=String(p.name).toLowerCase().trim();if(seenN[k]){remap[p.id]=seenN[k];tomb('p:'+p.id);}else seenN[k]=p.id;});
+     if(Object.keys(remap).length){
+       LIB.players=LIB.players.filter(p=>!remap[p.id]);
+       LIB.teams.forEach(t=>{if(!Array.isArray(t.playerIds)) return;t.playerIds=t.playerIds.map(x=>remap[x]||x);if(remap[t.capId]) t.capId=remap[t.capId];if(remap[t.wkId]) t.wkId=remap[t.wkId];});}}
     LIB.teams.forEach(t=>{t.playerIds=uniq(Array.isArray(t.playerIds)?t.playerIds:[]).filter(x=>!DEL['p:'+x]);if(t.capId&&DEL['p:'+t.capId]) t.capId='';if(t.wkId&&DEL['p:'+t.wkId]) t.wkId='';});
     LIB.players.sort(byName);LIB.teams.sort(byName);persistLib();
     HIST=mergeRecs(HIST,st.hist,'m:').filter(r=>r.t1);
@@ -1044,7 +1052,7 @@ function histHtml(){
     '<section class="panel pad" id="syncpanel"><h3>Spreadsheet sync</h3>'+
     '<label class="field"><span>Sync URL</span><input id="syncurl" type="url" inputmode="url" autocomplete="off" placeholder="Paste your Sync URL here" value="'+esc(SYNC.url)+'" data-f="sync"></label>'+
     '<p class="note">All your data (players, teams, matches and the live ball-by-ball) is sent to this address whenever anything changes. Players and teams you change in the sheet are loaded back into the app within a few seconds.'+(SYNC.status?' <b>'+esc(SYNC.status)+'</b>':'')+'</p>'+
-    '<div class="actions"><button class="btn" data-act="sync-all"'+(SYNC.url?'':' disabled')+'>Send everything now</button><button class="btn" data-act="sync-pull"'+(SYNC.url?'':' disabled')+'>Sync both ways now</button><button class="btn" data-act="sync-test"'+(SYNC.url?'':' disabled')+'>Check connection and add headings</button></div>'+
+    '<div class="actions"><button class="btn" data-act="sync-all"'+(SYNC.url?'':' disabled')+'>Send everything now</button><button class="btn" data-act="sync-link"'+(SYNC.url?'':' disabled')+'>Copy link for other devices</button><button class="btn" data-act="sync-pull"'+(SYNC.url?'':' disabled')+'>Sync both ways now</button><button class="btn" data-act="sync-test"'+(SYNC.url?'':' disabled')+'>Check connection and add headings</button></div>'+
     '<h3 style="margin-top:16px">Save the whole history</h3>'+
     '<div class="actions" style="margin-top:0"><button class="btn primary" data-act="export-sheet"'+(HIST.length?'':' disabled')+'>Save to Google Sheet</button><button class="btn" data-act="export-csv"'+(HIST.length?'':' disabled')+'>Download CSV</button></div>'+
     (SYNC.sheet?'<p class="note"><b>'+esc(SYNC.sheet)+'</b></p>':'')+'</section></div>';
@@ -1065,6 +1073,10 @@ function histAct(a,d){
     case 'hist-del-arm':ui.armed='h:'+d.id;break;
     case 'hist-del':{const id=d.id;HIST=HIST.filter(x=>x.id!==id);tomb('m:'+id);persistHist();syncSoon();ui.armed=null;remote(db=>db.doc('matches/'+id).delete());break;}
     case 'sync-all':syncPush(true);return true;
+    case 'sync-link':{
+      const lk=location.origin+location.pathname+'?sync='+encodeURIComponent(SYNC.url);
+      try{navigator.clipboard.writeText(lk).then(()=>toast('Link copied. Open it on another device.'),()=>{SYNC.status='Link: '+lk;render();});}catch(e){SYNC.status='Link: '+lk;}
+      break;}
     case 'sync-pull':{
       SYNC.status='Syncing both ways...';
       syncBoth().then(msg=>{SYNC.status=msg;if(ui.hist) render();});
