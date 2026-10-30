@@ -949,6 +949,8 @@ function menuHtml(){
   return '<div class="menuwrap"><button class="dots" data-act="menu" aria-label="Menu" aria-haspopup="true" aria-expanded="'+ui.menu+'"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="19" r="2" fill="currentColor"/></svg></button>'+
     (ui.menu?'<div class="menu" role="menu"><button role="menuitem" data-act="hist-open">Match history</button><button role="menuitem" data-act="results-open">Results</button></div>':'')+'</div>';
 }
+/* Newest match first, oldest last, in the order the matches were played. */
+function histSorted(){return HIST.slice().sort((a,b)=>cmpS(String(b.at||''),String(a.at||''))||cmpS(String(b.id),String(a.id)));}
 function histCardHtml(){
   const r=HIST.find(x=>x.id===ui.histId);
   const head='<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div>'+
@@ -967,7 +969,7 @@ function seriesCardHtml(T,g){
   const na=tName(T,g.a),nb=tName(T,g.b);
   const extra=[g.ties?plural(g.ties,'tie'):'',g.draws?plural(g.draws,'draw'):''].filter(Boolean).join(', ');
   const lead=g.played===0?'Not started':g.wa===g.wb?(g.played===g.total?'Series level':'Level'):(g.wa>g.wb?na:nb)+(g.played===g.total?' won the series':' lead');
-  const games=g.fx.filter(f=>f.done&&f.result).map(f=>{
+  const games=g.fx.filter(f=>f.done&&f.result).sort((x,y)=>cmpS(String(y.result.at||''),String(x.result.at||''))).map(f=>{
     const has=f.result.rec&&HIST.some(x=>x.id===f.result.rec);
     const rd=fmtDate(f.result.at||((HIST.find(x=>x.id===f.result.rec)||{}).at))||'No date';
     return '<div class="fixrow"><div class="fx"><span class="name">'+esc(f.label)+'</span><span class="sub"><b>'+esc(rd)+'</b> &middot; Tournament match</span><span class="sub"><b>'+esc(f.result.text)+'</b></span>'+((f.result.scores||[]).length?'<span class="sub">'+f.result.scores.map(esc).join(' &middot; ')+'</span>':'')+'</div>'+
@@ -991,7 +993,7 @@ function resultsHtml(){
     return '<h3 class="stephead" style="margin:16px 2px 0"><b>'+(fin?'Finished':'In progress')+'</b> '+esc(T.name)+' &middot; '+esc(TT[T.type])+'</h3>'+(peopleMode(T)?'<section class="panel pad"><p class="big" style="margin:0">'+(fin&&autoMode(T)?'Result: ':'Score: ')+esc(tourScore(T))+'</p><p class="muted" style="margin:4px 0 0">'+peopleScore(T).map(x=>esc(x.name)+' '+x.w).join(' &middot; ')+'</p></section>':'')+ser.map(g=>seriesCardHtml(T,g)).join('')+
       '<div class="actions"><button class="btn small" data-act="results-view" data-id="'+esc(T.id)+'">Open tournament</button></div>';
   }).join('');
-  const reg=HIST.filter(r=>!r.tn&&r.result);
+  const reg=histSorted().filter(r=>!r.tn&&r.result);
   const tourPart=(rf!=='reg')?('<h2 class="catlabel">Tournament match</h2>'+(blocks||'<section class="panel pad"><p class="muted">No tournament series results yet.</p></section>')):'';
   const regPart=(rf!=='tour')?('<h2 class="catlabel">Regular match</h2>'+(reg.length?reg.map(regularResultHtml).join(''):'<section class="panel pad"><p class="muted">No regular match results yet.</p></section>')):'';
   return '<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div>'+
@@ -1002,7 +1004,7 @@ function resultsHtml(){
 function histHtml(){
   if(ui.hist==='tours') return resultsHtml();
   if(ui.hist==='card') return histCardHtml();
-  const hf=ui.histFilter||'all',shown=HIST.filter(r=>catOk(r,hf));
+  const hf=ui.histFilter||'all',shown=histSorted().filter(r=>catOk(r,hf));
   const items=shown.length?shown.map(r=>{
     const d=fmtDate(r.at);
     const armed=ui.armed==='h:'+r.id;
