@@ -80,6 +80,69 @@ var HEADINGS = {
 };
 var TAB_ORDER = ["Players", "Teams", "Matches", "Innings", "Batting", "Bowling", "Toss", "Lineups", "Ball by ball", "Live", "Current match", "Tournaments", "Tournament teams", "People", "Fixtures", "Series", "Activity", "App data"];
 
+/* ---- merging, so what two devices enter at the same time is never lost ---- */
+function cmp_(a, b) { return a < b ? -1 : a > b ? 1 : 0; }
+function canon_(v) {
+  if (v === null || v === undefined) return 'null';
+  if (Object.prototype.toString.call(v) === '[object Array]') return '[' + v.map(canon_).join(',') + ']';
+  if (typeof v === 'object') {
+    return '{' + Object.keys(v).filter(function (k) { return v[k] !== undefined; }).sort().map(function (k) { return JSON.stringify(k) + ':' + canon_(v[k]); }).join(',') + '}';
+  }
+  return JSON.stringify(v);
+}
+/* Puts the shared data into a fixed order, the same order the app uses, so two copies with the same data compare equal. */
+function normCore_(s) {
+  s = s || {};
+  var lib = s.lib || {};
+  var byNm = function (a, b) { return cmp_(String(a.name || '').toLowerCase(), String(b.name || '').toLowerCase()) || cmp_(String(a.id), String(b.id)); };
+  return {
+    liveAt: String(s.liveAt !== undefined ? s.liveAt : (s.at || '')),
+    lib: { players: (lib.players || []).slice().sort(byNm), teams: (lib.teams || []).slice().sort(byNm) },
+    hist: (s.hist || []).slice().sort(function (a, b) { return cmp_(String(b.at), String(a.at)) || cmp_(String(a.id), String(b.id)); }),
+    tours: (s.tours || []).slice().sort(function (a, b) { return cmp_(String(a.id), String(b.id)); }),
+    live: s.live || null,
+    del: s.del || {}
+  };
+}
+/* Every record is kept; when both sides have the same record the one updated last wins. A dated delete marker removes a record unless it was edited after the delete. */
+function mergeRecs_(x, y, pre, del) {
+  var map = {};
+  [x || [], y || []].forEach(function (list) {
+    list.forEach(function (r) {
+      if (!r || !r.id) return;
+      var c = map[r.id];
+      if (!c || String(r.u || '') >= String(c.u || '')) map[r.id] = r;
+    });
+  });
+  var out = [];
+  for (var id in map) {
+    var r = map[id], t = del[pre + id];
+    if (t && String(t) >= String(r.u || '')) continue;
+    out.push(r);
+  }
+  return out;
+}
+function mergeStates_(a, b) {
+  a = normCore_(a); b = normCore_(b);
+  var del = {}, k;
+  [a.del, b.del].forEach(function (d) { for (k in d) { if (!del[k] || String(d[k]) > String(del[k])) del[k] = d[k]; } });
+  var live = b.liveAt >= a.liveAt ? b : a;
+  return normCore_({
+    liveAt: live.liveAt, live: live.live, del: del,
+    lib: {
+      players: mergeRecs_(a.lib.players, b.lib.players, 'p:', del).filter(function (p) { return p.name; }),
+      teams: mergeRecs_(a.lib.teams, b.lib.teams, 't:', del)
+    },
+    hist: mergeRecs_(a.hist, b.hist, 'm:', del).filter(function (r) { return r.t1; }),
+    tours: mergeRecs_(a.tours, b.tours, 'o:', del)
+  });
+}
+function loadStateText_(ss) {
+  var rows = readTab_(ss, 'App data');
+  rows.sort(function (a, b) { return Number(a[0]) - Number(b[0]); });
+  return rows.map(function (r) { return String(r[1]).substring(1); }).join('');
+}
+
 function doPost(e) {
   var lock = LockService.getScriptLock();
   try {
@@ -88,21 +151,8 @@ function doPost(e) {
     if (data.app !== 'CricketScorer') {
       return out_({ ok: false, error: 'Not a CricketScorer payload' });
     }
-
-    // A copy that was sent earlier than the one already saved is stale. Ignore it so it cannot overwrite newer data.
-    var prev = PropertiesService.getScriptProperties().getProperty('lastSync');
-    if (data.sentAt && prev && String(data.sentAt) < String(prev)) {
-      return out_({ ok: true, skipped: 'older than the data already saved' });
-    }
-
-    // Data from a device that has not yet loaded the newest data is ignored, so it cannot overwrite what another device saved.
-    var propsS = PropertiesService.getScriptProperties();
-    var storedAt = propsS.getProperty('stateAt') || '';
-    if (data.state && String(data.stateAt || '') < storedAt) {
-      return out_({ ok: true, skipped: 'another device saved newer data', stateAt: storedAt });
-    }
-
     var ss = getSS_();
+    var props = PropertiesService.getScriptProperties();
     var tabs = data.tabs;
 
     // Older versions of the app sent fixed fields instead of a list of tabs.
@@ -115,36 +165,64 @@ function doPost(e) {
       ];
     }
 
-    // The whole app state is kept in the App data tab, so other devices can load it.
+    // What arrives is MERGED with what is already saved, never written over it. Whatever any device enters is kept.
+    var writeTabs = true;
     if (data.state) {
-      var chunks = [];
-      var st = String(data.state);
-      for (var c = 0; c < st.length; c += 30000) chunks.push([chunks.length + 1, '~' + st.substr(c, 30000)]);
-      tabs.push({ name: 'App data', head: HEADINGS['App data'], rows: chunks });
+      var incoming = null;
+      try { incoming = JSON.parse(data.state); } catch (pe) {}
+      if (incoming) {
+        var stored = null, text = loadStateText_(ss);
+        if (text) { try { stored = JSON.parse(text); } catch (se) {} }
+        var inN = normCore_(incoming);
+        var merged = stored ? mergeStates_(stored, incoming) : inN;
+        var mC = canon_(merged), iC = canon_(inN), sC = stored ? canon_(normCore_(stored)) : '';
+        // The readable tabs are only written from a copy that already contains everything saved. A copy that is missing something waits until that device has loaded it and sends again.
+        writeTabs = (mC === iC);
+        var newAt = new Date().toISOString();
+        if (mC !== sC) {
+          merged.at = newAt;
+          var st = JSON.stringify(merged), chunks = [];
+          for (var c = 0; c < st.length; c += 30000) chunks.push([chunks.length + 1, '~' + st.substr(c, 30000)]);
+          writeTab_(ss, 'App data', HEADINGS['App data'], chunks);
+          props.setProperty('stateAt', newAt);
+          // stateBy names the device whose copy already had everything, so that device need not download it again.
+          props.setProperty('stateBy', writeTabs ? String(data.dev || '') : '');
+        } else if (!writeTabs) {
+          // Nothing new was saved, but the sending device is missing something, so tell every device to reload.
+          props.setProperty('stateAt', newAt);
+          props.setProperty('stateBy', '');
+        }
+      }
     }
 
     var counts = {};
-    for (var i = 0; i < tabs.length; i++) {
-      var t = tabs[i];
-      if (!t || !t.name) continue;
-      var head = (t.head && t.head.length) ? t.head : (HEADINGS[t.name] || []);
-      try {
-        writeTab_(ss, String(t.name), head, t.rows || []);
-        counts[t.name] = (t.rows || []).length;
-      } catch (tabErr) {
-        // One bad tab must never stop the others from being written.
-        counts[t.name] = 'error: ' + String(tabErr);
+    if (writeTabs) {
+      for (var i = 0; i < tabs.length; i++) {
+        var t = tabs[i];
+        if (!t || !t.name || t.name === 'App data') continue;
+        var head = (t.head && t.head.length) ? t.head : (HEADINGS[t.name] || []);
+        try {
+          writeTab_(ss, String(t.name), head, t.rows || []);
+          counts[t.name] = (t.rows || []).length;
+        } catch (tabErr) {
+          // One bad tab must never stop the others from being written.
+          counts[t.name] = 'error: ' + String(tabErr);
+        }
       }
+      props.setProperty('counts', JSON.stringify(counts));
     }
     // Tabs the app did not send this time still get their headings.
     ensureHeadings_(ss);
 
-    var props = PropertiesService.getScriptProperties();
-    props.setProperty('lastSync', data.sentAt || new Date().toISOString());
-    props.setProperty('counts', JSON.stringify(counts));
-    if (data.state) props.setProperty('stateAt', String(data.stateAt || ''));
+    var sentAt = data.sentAt || new Date().toISOString();
+    var recent = [];
+    try { recent = JSON.parse(props.getProperty('recent') || '[]'); } catch (rx) {}
+    recent.push(sentAt);
+    if (recent.length > 30) recent = recent.slice(-30);
+    props.setProperty('recent', JSON.stringify(recent));
+    props.setProperty('lastSync', sentAt);
 
-    return out_({ ok: true, sentAt: data.sentAt || null, rows: counts });
+    return out_({ ok: true, sentAt: sentAt, rows: counts, tabsWritten: writeTabs });
   } catch (err) {
     return out_({ ok: false, error: String(err) });
   } finally {
@@ -153,25 +231,36 @@ function doPost(e) {
 }
 
 function doGet(e) {
-  // A very small reply that only says when the shared data last changed. The app checks this often.
-  if (e && e.parameter && e.parameter.action === 'stateat') {
-    return out_({ ok: true, stateAt: PropertiesService.getScriptProperties().getProperty('stateAt') || '' });
+  var action = e && e.parameter ? e.parameter.action : '';
+  var props = PropertiesService.getScriptProperties();
+  // A very small reply that only says when the shared data last changed, and which device changed it. The app checks this often.
+  if (action === 'stateat') {
+    return out_({ ok: true, stateAt: props.getProperty('stateAt') || '', stateBy: props.getProperty('stateBy') || '' });
   }
-  // The app asks for the shared state to load what was entered on another device. This is the fast path.
-  if (e && e.parameter && e.parameter.action === 'state') {
+  // A quick reply the app uses to confirm that what it sent has been received.
+  if (action === 'check') {
+    var chk = { ok: true, lastSync: props.getProperty('lastSync') || 'never', stateAt: props.getProperty('stateAt') || '', stateBy: props.getProperty('stateBy') || '', recent: [] };
+    try { chk.recent = JSON.parse(props.getProperty('recent') || '[]'); } catch (xr) {}
+    try { getSS_(); } catch (ec) { chk.ok = false; chk.problem = 'Could not open a spreadsheet: ' + String(ec); }
+    return out_(chk);
+  }
+  // The app asks for the shared state to load what was entered on another device.
+  if (action === 'state') {
+    var lk = LockService.getScriptLock(), got = false;
     try {
-      var rows = readTab_(getSS_(), 'App data');
-      rows.sort(function (a, b) { return Number(a[0]) - Number(b[0]); });
-      var text = rows.map(function (r) { return String(r[1]).substring(1); }).join('');
-      return out_({ ok: true, state: text, stateAt: PropertiesService.getScriptProperties().getProperty('stateAt') || '' });
+      got = lk.tryLock(15000);
+      var text = loadStateText_(getSS_());
+      return out_({ ok: true, state: text, stateAt: props.getProperty('stateAt') || '', stateBy: props.getProperty('stateBy') || '' });
     } catch (errS) {
       return out_({ ok: false, error: String(errS) });
+    } finally {
+      if (got) { try { lk.releaseLock(); } catch (xl) {} }
     }
   }
   // Every visit makes sure all tabs exist with their headings.
   try { ensureHeadings_(getSS_()); } catch (x0) {}
   // The app asks for the saved players and teams so they can be picked for a match on any device.
-  if (e && e.parameter && e.parameter.action === 'lib') {
+  if (action === 'lib') {
     try {
       var ss0 = getSS_();
       return out_({ ok: true, players: readTab_(ss0, 'Players'), teams: readTab_(ss0, 'Teams') });
@@ -186,15 +275,15 @@ function doGet(e) {
     info.sheet = ss.getName();
     info.sheetUrl = ss.getUrl();
     info.tabs = ss.getSheets().map(function (s) { return s.getName(); });
-  } catch (e) {
+  } catch (e2) {
     info.ok = false;
-    info.problem = 'Could not open a spreadsheet: ' + String(e);
+    info.problem = 'Could not open a spreadsheet: ' + String(e2);
   }
-  var props = PropertiesService.getScriptProperties();
   var counts = {};
   try { counts = JSON.parse(props.getProperty('counts') || '{}'); } catch (x) {}
   info.lastSync = props.getProperty('lastSync') || 'never';
   info.stateAt = props.getProperty('stateAt') || '';
+  info.stateBy = props.getProperty('stateBy') || '';
   info.rows = counts;
   return out_(info);
 }

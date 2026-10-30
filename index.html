@@ -428,11 +428,40 @@ let DB=null,pendingOps=[],chain=Promise.resolve();
 function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'base'});}
 const HISTKEY='cricketscorer.hist.v1',SYNCKEY='cricketscorer.sync.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
-const SYNC_URL='https://script.google.com/macros/s/AKfycbzmYufCOGUDrWVwLpQ71kQlDfwHzf-rnUggIyIShHMNBy8SyD8-rnUdcxGmNadgmPiOLQ/exec';
+const SYNC_URL='';
 let HIST=[];const SYNC={url:SYNC_URL,status:'',sheet:'',state:'idle',last:null,hide:null,ready:true};
 const STATEKEY='cricketscorer.stateat.v1';
 let STATEAT='';try{STATEAT=localStorage.getItem(STATEKEY)||'';}catch(e){}
 let APPLYING=false,pulling=false;
+/* Sync merges record by record, so entries made on different devices at the same time are all kept.
+   Every record has an updated time (u). A deleted record leaves a dated marker in DEL so it is not brought back. */
+const DELKEY='cricketscorer.del.v1',LIVEKEY='cricketscorer.liveat.v1';
+let DEL={};try{DEL=JSON.parse(localStorage.getItem(DELKEY)||'{}')||{};}catch(e){DEL={};}
+let LIVEAT='';try{LIVEAT=localStorage.getItem(LIVEKEY)||'';}catch(e){}
+let SEENAT='';
+function persistDel(){try{localStorage.setItem(DELKEY,JSON.stringify(DEL));}catch(e){}}
+function persistLive(){try{localStorage.setItem(LIVEKEY,LIVEAT);}catch(e){}}
+function nowIso(){return new Date().toISOString();}
+function tomb(key){DEL[key]=nowIso();persistDel();}
+function cmpS(a,b){return a<b?-1:a>b?1:0;}
+function canon(v){
+  if(v===null||v===undefined) return 'null';
+  if(Array.isArray(v)) return '['+v.map(canon).join(',')+']';
+  if(typeof v==='object') return '{'+Object.keys(v).filter(k=>v[k]!==undefined).sort().map(k=>JSON.stringify(k)+':'+canon(v[k])).join(',')+'}';
+  return JSON.stringify(v);
+}
+function mergeRecs(a,b,pre){
+  const map={};
+  [a||[],b||[]].forEach(list=>list.forEach(r=>{if(!r||!r.id) return;const c=map[r.id];if(!c||String(r.u||'')>=String(c.u||'')) map[r.id]=r;}));
+  return Object.keys(map).map(k=>map[k]).filter(r=>{const t=DEL[pre+r.id];return !(t&&String(t)>=String(r.u||''));});
+}
+/* Everything that is shared between devices, in a fixed order so two copies with the same data look identical. */
+function coreObj(){
+  const nm=(a,b)=>cmpS(String(a.name||'').toLowerCase(),String(b.name||'').toLowerCase())||cmpS(String(a.id),String(b.id));
+  return {liveAt:LIVEAT,lib:{players:LIB.players.slice().sort(nm),teams:LIB.teams.slice().sort(nm)},
+    hist:HIST.slice().sort((a,b)=>cmpS(String(b.at),String(a.at))||cmpS(String(a.id),String(b.id))),
+    tours:TOURS.slice().sort((a,b)=>cmpS(String(a.id),String(b.id))),live:M||PENDING||null,del:DEL};
+}
 /* A match that is being scored on another device waits here until a button is pressed, so this device stays free for teams, players and tournaments. */
 const PENDKEY='cricketscorer.pending.v1';
 let PENDING=null;try{PENDING=JSON.parse(localStorage.getItem(PENDKEY)||'null');}catch(e){}
@@ -475,14 +504,14 @@ function remote(op){
 }
 function libPutPlayer(id,name){
   const i=LIB.players.findIndex(p=>p.id===id);
-  if(i>=0) LIB.players[i].name=name;else LIB.players.push({id:id,name:name});
+  const u=nowIso();if(i>=0){LIB.players[i].name=name;LIB.players[i].u=u;}else LIB.players.push({id:id,name:name,u:u});
   LIB.players.sort(byName);persistLib();syncSoon();
   remote(db=>db.doc('players/'+id).set({name:name}));
 }
 function libDelPlayer(id){
-  LIB.players=LIB.players.filter(p=>p.id!==id);
+  LIB.players=LIB.players.filter(p=>p.id!==id);tomb('p:'+id);
   LIB.teams.forEach(t=>{
-    if(t.playerIds.indexOf(id)>=0){t.playerIds=t.playerIds.filter(x=>x!==id);if(t.capId===id) t.capId='';if(t.wkId===id) t.wkId='';const ids=t.playerIds.slice(),nm=t.name,tid=t.id,cp=t.capId||'',wp=t.wkId||'';remote(db=>db.doc('teams/'+tid).set({name:nm,playerIds:ids,capId:cp,wkId:wp}));}
+    if(t.playerIds.indexOf(id)>=0){t.u=nowIso();t.playerIds=t.playerIds.filter(x=>x!==id);if(t.capId===id) t.capId='';if(t.wkId===id) t.wkId='';const ids=t.playerIds.slice(),nm=t.name,tid=t.id,cp=t.capId||'',wp=t.wkId||'';remote(db=>db.doc('teams/'+tid).set({name:nm,playerIds:ids,capId:cp,wkId:wp}));}
   });
   /* A removed player also leaves any squad that is being edited or picked, so every count stays right. */
   if(ui.squads&&ui.squads.editor&&ui.squads.editor.sel) ui.squads.editor.sel=ui.squads.editor.sel.filter(x=>x!==id);
@@ -494,14 +523,14 @@ function uniq(a){return a.filter((x,i)=>a.indexOf(x)===i);}
 function libPutTeam(id,name,playerIds,capId,wkId){
   capId=capId||'';wkId=wkId||'';playerIds=uniq(playerIds);
   const i=LIB.teams.findIndex(t=>t.id===id);
-  if(i>=0){LIB.teams[i].name=name;LIB.teams[i].playerIds=playerIds.slice();LIB.teams[i].capId=capId;LIB.teams[i].wkId=wkId;}
-  else LIB.teams.push({id:id,name:name,playerIds:playerIds.slice(),capId:capId,wkId:wkId});
+  if(i>=0){LIB.teams[i].name=name;LIB.teams[i].playerIds=playerIds.slice();LIB.teams[i].capId=capId;LIB.teams[i].wkId=wkId;LIB.teams[i].u=nowIso();}
+  else LIB.teams.push({id:id,name:name,playerIds:playerIds.slice(),capId:capId,wkId:wkId,u:nowIso()});
   LIB.teams.sort(byName);persistLib();syncSoon();
   const ids=playerIds.slice();
   remote(db=>db.doc('teams/'+id).set({name:name,playerIds:ids,capId:capId,wkId:wkId}));
 }
 function libDelTeam(id){
-  LIB.teams=LIB.teams.filter(t=>t.id!==id);persistLib();syncSoon();
+  LIB.teams=LIB.teams.filter(t=>t.id!==id);tomb('t:'+id);persistLib();syncSoon();
   remote(db=>db.doc('teams/'+id).delete());
 }
 async function initDb(){
@@ -541,7 +570,7 @@ function histRecord(final){
   const A=analyse(),r=matchOutcome(M,A);
   if(!M.recId){M.recId=newId('m');M.recAt=new Date().toISOString();}
   const scores=A.map((S,i)=>M.teams[M.innings[i].bat].name+' '+S.runs+'/'+S.wkts+(S.declared&&!M.overs?'d':'')+' ('+fmtOvers(S.balls)+' ov)');
-  const rec={id:M.recId,at:M.recAt,t1:M.teams[0].name,t2:M.teams[1].name,format:M.format||'Custom',overs:M.overs||'',toss:tossText(),scores:scores,result:r?r.text:(final?'Not completed':''),tn:M.tour?M.tour.label:'',tj:tossData(),summary:summaryText(A),card:JSON.stringify(A.map((S,i)=>cardData(A,i))),lu:JSON.stringify(lineupData()),bb:JSON.stringify(ballRowsNamed())};
+  const rec={id:M.recId,u:nowIso(),at:M.recAt,t1:M.teams[0].name,t2:M.teams[1].name,format:M.format||'Custom',overs:M.overs||'',toss:tossText(),scores:scores,result:r?r.text:(final?'Not completed':''),tn:M.tour?M.tour.label:'',tj:tossData(),summary:summaryText(A),card:JSON.stringify(A.map((S,i)=>cardData(A,i))),lu:JSON.stringify(lineupData()),bb:JSON.stringify(ballRowsNamed())};
   tourRecord(A,r,rec);
   const i=HIST.findIndex(x=>x.id===rec.id);
   if(i>=0) HIST[i]=rec;else HIST.push(rec);
@@ -671,8 +700,8 @@ function buildSync(){
   const players=LIB.players.map(x=>[x.id,x.name,LIB.teams.filter(t=>t.playerIds.indexOf(x.id)>=0).map(t=>t.name).join(', ')]);
   const teams=LIB.teams.map(x=>[x.id,x.name,x.playerIds.map(nm).filter(Boolean).join(', '),nm(x.capId),nm(x.wkId),x.playerIds.filter(i=>libName(i)!=null).join(',')]);
   const liveHead=['Match','Innings','Event #','Type','Ball kind','Runs','Bowler','Wicket','Batter out','Fielder','Bowler id'];
-  const o={app:'CricketScorer',
-    stateAt:STATEAT,state:JSON.stringify({at:STATEAT,lib:{players:LIB.players,teams:LIB.teams},hist:HIST,tours:TOURS,live:M||PENDING||null}),
+  const core=coreObj();const o={app:'CricketScorer',dev:DEVICE,
+    stateAt:'',state:canon(core),
     players:players.map(r=>r.slice(0,2)),
     teams:teams.map(r=>r.slice(0,3)),
     head:CSVHEAD,rows:HIST.slice().reverse().map(histRow),
@@ -696,7 +725,7 @@ function buildSync(){
       {name:'Series',head:['Tournament','Team A','Wins A','Wins B','Team B','Ties','Draws','Played','Total','Status','Tournament ID'],rows:t.ser},
       {name:'Activity',head:['Tournament','When','What happened','Tournament ID'],rows:t.log}
     ]};
-  const sig=JSON.stringify(o);o.sentAt=new Date().toISOString();
+  const sig=JSON.stringify(o);o.stateAt=STATEAT;o.state=JSON.stringify(Object.assign({at:STATEAT},core));o.sentAt=new Date().toISOString();
   return {sig:sig,body:JSON.stringify(o),sentAt:o.sentAt};
 }
 function syncIndHtml(){
@@ -765,50 +794,61 @@ function importLib(){
 /* Everything entered on one device shows on every device that uses the same Sync URL. */
 function applyState(st){
   const first=!STATEAT;
+  const beforeAll=canon(coreObj());
   APPLYING=true;
   try{
-    const un=(remote,local)=>{const ids={};remote.forEach(x=>{ids[x.id]=1;});return remote.concat(first?local.filter(x=>!ids[x.id]):[]);};
+    Object.keys(st.del||{}).forEach(k=>{if(String(st.del[k])>String(DEL[k]||'')) DEL[k]=st.del[k];});
+    persistDel();
     const lib=st.lib||{};
-    if(Array.isArray(lib.players)&&Array.isArray(lib.teams)){
-      LIB.players=un(lib.players,LIB.players).filter(p=>p&&p.id&&p.name);
-      LIB.teams=un(lib.teams,LIB.teams).filter(t=>t&&t.id);
-      LIB.teams.forEach(t=>{t.playerIds=uniq(Array.isArray(t.playerIds)?t.playerIds:[]);});
-      LIB.players.sort(byName);LIB.teams.sort(byName);persistLib();
+    LIB.players=mergeRecs(LIB.players,lib.players,'p:').filter(p=>p.name);
+    LIB.teams=mergeRecs(LIB.teams,lib.teams,'t:');
+    LIB.teams.forEach(t=>{t.playerIds=uniq(Array.isArray(t.playerIds)?t.playerIds:[]);});
+    LIB.players.sort(byName);LIB.teams.sort(byName);persistLib();
+    HIST=mergeRecs(HIST,st.hist,'m:').filter(r=>r.t1);
+    HIST.sort((a,b)=>String(b.at).localeCompare(String(a.at)));persistHist();
+    TOURS=mergeRecs(TOURS,st.tours,'o:').filter(t=>Array.isArray(t.teams)&&Array.isArray(t.fixtures));persistTours();
+    /* The match being scored is one shared record: the newest change wins. */
+    const rAt=String(st.liveAt!==undefined?st.liveAt:(st.at||''));
+    if(rAt>LIVEAT){
+      const had=!!M,beforeM=had?JSON.stringify(M):'';
+      const L=st.live&&st.live.v===1&&st.live.innings&&st.live.teams?st.live:null;
+      if(M){
+        if(!L){if(!first){M=null;clearSaved();ui=freshUi();ui.top=true;}}
+        else if(sameMatch(M,L)&&!(first&&String(M.savedAt||'')>String(L.savedAt||''))){
+          M=L;try{localStorage.setItem(KEY,JSON.stringify(M));}catch(e){}
+          ui.view=Math.min(ui.view,M.innings.length-1);if(JSON.stringify(M)!==beforeM){ui.wk=null;ui.sub=null;}
+        }
+        if(M) PENDING=null;
+      }else PENDING=(L&&liveInfo(L))?L:null;
+      persistPending();
+      LIVEAT=rAt;persistLive();
     }
-    if(Array.isArray(st.hist)){HIST=un(st.hist,HIST).filter(r=>r&&r.id&&r.t1);HIST.sort((a,b)=>String(b.at).localeCompare(String(a.at)));persistHist();}
-    if(Array.isArray(st.tours)){TOURS=un(st.tours,TOURS).filter(t=>t&&t.id&&Array.isArray(t.teams)&&Array.isArray(t.fixtures));persistTours();}
-    const had=!!M,before=had?JSON.stringify(M):'';
-    const L=st.live&&st.live.v===1&&st.live.innings&&st.live.teams?st.live:null;
-    if(M){
-      if(!L){if(!first){M=null;clearSaved();ui=freshUi();ui.top=true;}}
-      else if(sameMatch(M,L)&&!(first&&String(M.savedAt||'')>String(L.savedAt||''))){
-        M=L;try{localStorage.setItem(KEY,JSON.stringify(M));}catch(e){}
-        ui.view=Math.min(ui.view,M.innings.length-1);if(JSON.stringify(M)!==before){ui.wk=null;ui.sub=null;}
-      }
-      if(M) PENDING=null;
-    }else PENDING=(L&&liveInfo(L))?L:null;
-    persistPending();
-    STATEAT=st.at;try{localStorage.setItem(STATEKEY,STATEAT);}catch(e){}
+    if(st.at&&String(st.at)>String(STATEAT)){STATEAT=st.at;try{localStorage.setItem(STATEKEY,STATEAT);}catch(e){}}
   }finally{APPLYING=false;}
-  if(!first){try{SYNC.last=buildSync().sig;}catch(e){}}
-  render();
-  toast('Updated with the latest from your other device');
+  if(canon(coreObj())!==beforeAll){render();toast('Updated with the latest from your other device');}
+  /* Anything this device has that the sheet does not is sent straight back, so nothing is lost. */
+  syncSoon();
 }
 function pullState(force){
   if(LIB.mode==='loading') return new Promise(r=>setTimeout(r,300)).then(()=>pullState(force));
   if(LIB.mode!=='local'||!SYNC.url||pulling) return Promise.resolve(false);
   if(!force&&(SYNC.ready===false||SYNC.state==='syncing'||syncT!==null)) return Promise.resolve(false);
   pulling=true;
-  /* The regular check only asks for the time of the latest change, which is tiny. The full data is fetched only when it is newer than this device's copy. */
-  const quick=force?Promise.resolve(true):sheetStatus('stateat').then(q=>!(q&&q.ok!==false&&typeof q.stateAt==='string'&&q.stateAt!==''&&String(q.stateAt)<=String(STATEAT)));
+  /* The regular check only asks when the shared data last changed, which is tiny. The full data is fetched only when it changed and the change did not come from this device. */
+  const quick=force?Promise.resolve(true):sheetStatus('stateat').then(q=>{
+    if(!(q&&q.ok!==false&&typeof q.stateAt==='string'&&q.stateAt!=='')) return false;
+    if(q.stateAt===SEENAT) return false;
+    if(q.stateBy&&q.stateBy===DEVICE){SEENAT=q.stateAt;return false;}
+    return true;
+  });
   return quick.then(need=>need?sheetStatus('state'):null).then(d=>{
-    if(d===null){pulling=false;return false;}
     pulling=false;
-    if(d&&d.ok!==false&&!d.state&&d.state!==undefined) return 'none';
+    if(d===null) return false;
+    if(d&&d.ok!==false&&d.state==='') return 'none';
     if(!d||d.ok===false||!d.state) return false;
     let st=null;try{st=JSON.parse(d.state);}catch(e){}
-    if(!st||!st.at||String(st.at)<=String(STATEAT)) return false;
-    if(!force&&(SYNC.state==='syncing'||syncT!==null)) return false;
+    if(!st) return false;
+    SEENAT=d.stateAt||'';
     applyState(st);return true;
   }).catch(()=>{pulling=false;return false;});
 }
@@ -826,11 +866,10 @@ function sheetStatus(action){
   return Promise.resolve().then(()=>fetch(u.href,{credentials:'omit',redirect:'follow',signal:ctl?ctl.signal:undefined})).then(r=>r.json()).then(d=>{clearTimeout(t);return d;}).catch(()=>{clearTimeout(t);return null;});
 }
 function verifySent(b,tries){
-  return sheetStatus('status').then(st=>{
+  return sheetStatus('check').then(st=>{
     if(!st||typeof st!=='object') return {r:'unreadable'};
     if(st.ok===false) return {r:'problem',msg:st.problem||st.error||''};
-    if(st.lastSync===b.sentAt) return {r:'ok',st:st};
-    if(st.stateAt&&String(st.stateAt)>String(STATEAT)) return {r:'newer'};
+    if(st.lastSync===b.sentAt||(st.recent||[]).indexOf(b.sentAt)>=0) return {r:'ok',st:st};
     if(tries<5) return new Promise(res=>setTimeout(res,2000)).then(()=>verifySent(b,tries+1));
     return {r:'missing',st:st};
   });
@@ -999,7 +1038,7 @@ function histAct(a,d){
     case 'hist-back':ui.hist=ui.histFrom==='tours'?'tours':ui.histFrom==='close'?null:'list';ui.top=true;break;
     case 'hist-inn':ui.histInn=+d.v;break;
     case 'hist-del-arm':ui.armed='h:'+d.id;break;
-    case 'hist-del':{const id=d.id;HIST=HIST.filter(x=>x.id!==id);persistHist();syncSoon();ui.armed=null;remote(db=>db.doc('matches/'+id).delete());break;}
+    case 'hist-del':{const id=d.id;HIST=HIST.filter(x=>x.id!==id);tomb('m:'+id);persistHist();syncSoon();ui.armed=null;remote(db=>db.doc('matches/'+id).delete());break;}
     case 'sync-all':syncPush(true);return true;
     case 'sync-test':{
       SYNC.status='Checking the connection...';
@@ -1024,7 +1063,7 @@ let M=null;
 function freshSetup(){return {fmt:'T20',overs:'20',maxper:'',tossMode:'flip',caller:'0',call:'heads',coin:{state:'idle',result:''},winner:'',choice:'',slots:[{teamId:'',name:'',sel:[],newp:'',cap:'',wk:''},{teamId:'',name:'',sel:[],newp:'',cap:'',wk:''}]};}
 function freshUi(){return {mode:'n',wk:null,tab:'score',view:0,armed:null,copyText:null,screen:'setup',setup:freshSetup(),squads:{newp:'',editor:{teamId:'',name:'',sel:[],newp:''}},focus:null,top:false,chg:false,sub:null,menu:false,hist:null,tourId:null,tm:null,tnew:{name:'',type:'IPL',overs:'10'}};}
 let ui=freshUi();
-function save(){if(!M)return;M.savedAt=new Date().toISOString();stamp();syncSoon();try{localStorage.setItem(KEY,JSON.stringify(M));}catch(e){}livePush();}
+function save(){if(!M)return;M.savedAt=new Date().toISOString();LIVEAT=M.savedAt;persistLive();stamp();syncSoon();try{localStorage.setItem(KEY,JSON.stringify(M));}catch(e){}livePush();}
 
 /* ---------- live match shared between devices ----------
    The match in progress is kept in one shared record. Every device writes to it after each change and
@@ -1074,7 +1113,7 @@ function liveApply(x,first){
   render();
 }
 function load(){try{const s=localStorage.getItem(KEY);if(s){const m=JSON.parse(s);if(m&&m.v===1&&m.innings&&m.teams) return m;}}catch(e){}return null;}
-function clearSaved(){stamp();try{localStorage.removeItem(KEY);}catch(e){}}
+function clearSaved(){LIVEAT=nowIso();persistLive();stamp();try{localStorage.removeItem(KEY);}catch(e){}}
 
 const $=id=>document.getElementById(id);
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -1255,10 +1294,10 @@ let TOURS=[];
 function persistTours(){stamp();try{localStorage.setItem(TOURKEY,JSON.stringify(TOURS));}catch(e){}}
 function loadTours(){try{const t=JSON.parse(localStorage.getItem(TOURKEY)||'null');if(Array.isArray(t)) TOURS=t.filter(x=>x&&x.id&&Array.isArray(x.teams)&&Array.isArray(x.fixtures));}catch(e){}}
 function tourSave(T){
-  const i=TOURS.findIndex(x=>x.id===T.id);if(i>=0) TOURS[i]=T;else TOURS.push(T);
+  T.u=nowIso();const i=TOURS.findIndex(x=>x.id===T.id);if(i>=0) TOURS[i]=T;else TOURS.push(T);
   persistTours();syncSoon();const json=JSON.stringify(T);remote(db=>db.doc('tournaments/'+T.id).set({json:json}));
 }
-function tourDelete(id){TOURS=TOURS.filter(x=>x.id!==id);persistTours();syncSoon();remote(db=>db.doc('tournaments/'+id).delete());}
+function tourDelete(id){TOURS=TOURS.filter(x=>x.id!==id);tomb('o:'+id);persistTours();syncSoon();remote(db=>db.doc('tournaments/'+id).delete());}
 function curTour(){return TOURS.find(t=>t.id===ui.tourId)||null;}
 function tName(T,id){const t=T.teams.find(x=>x.id===id);return t?t.name:'Team';}
 function tourStages(T){return T.type==='WTC'?['Test','Final']:['League match','Qualifier 1','Eliminator','Qualifier 2','Semi-final','Final'];}
@@ -1846,7 +1885,7 @@ function actLib(a,d){
       if(!PENDING) return true;
       M=PENDING;PENDING=null;persistPending();ui=freshUi();ui.view=Math.min(M.cur,M.innings.length-1);ui.top=true;save();return true;}
     case 'pend-arm':ui.armed='pend';return true;
-    case 'pend-discard':PENDING=null;persistPending();stamp();syncSoon();ui.armed=null;return true;
+    case 'pend-discard':PENDING=null;persistPending();LIVEAT=nowIso();persistLive();stamp();syncSoon();ui.armed=null;return true;
     case 'add-player':addPlayerTo(d.k);return true;
     case 'team-toggle':ui.tOpen=ui.tOpen||{};ui.tOpen[d.id]=!ui.tOpen[d.id];return true;
     case 'pick-open':ui.pickK=d.k;ui.pickQ='';return true;
@@ -2490,7 +2529,7 @@ document.addEventListener('keydown',e=>{
 });
 
 loadLib();loadHist();loadTours();
-M=load();
+M=load();if(M&&String(M.savedAt||'')>LIVEAT){LIVEAT=M.savedAt;persistLive();}
 /* A finished match is not reopened: it is kept in Match history and the app opens normally. Only a half-scored match is resumed. */
 if(M){try{if(matchOutcome(M,analyse())){if(!M.recKey) histRecord(false);clearSaved();M=null;}}catch(e){}}
 /* A half-scored match is always reopened where it was left, and sent to the spreadsheet again in case the last change did not get through. */
