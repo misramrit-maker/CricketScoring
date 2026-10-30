@@ -810,7 +810,7 @@ function applyState(st){
     const lib=st.lib||{};
     LIB.players=mergeRecs(LIB.players,lib.players,'p:').filter(p=>p.name);
     LIB.teams=mergeRecs(LIB.teams,lib.teams,'t:');
-    LIB.teams.forEach(t=>{t.playerIds=uniq(Array.isArray(t.playerIds)?t.playerIds:[]);});
+    LIB.teams.forEach(t=>{t.playerIds=uniq(Array.isArray(t.playerIds)?t.playerIds:[]).filter(x=>!DEL['p:'+x]);if(t.capId&&DEL['p:'+t.capId]) t.capId='';if(t.wkId&&DEL['p:'+t.wkId]) t.wkId='';});
     LIB.players.sort(byName);LIB.teams.sort(byName);persistLib();
     HIST=mergeRecs(HIST,st.hist,'m:').filter(r=>r.t1);
     HIST.sort((a,b)=>String(b.at).localeCompare(String(a.at)));persistHist();
