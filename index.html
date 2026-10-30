@@ -187,6 +187,12 @@ h1{font-family:var(--font-display);font-size:34px;line-height:1.05;margin:0 0 6p
 .arrowbtn{flex:none;width:48px;padding:0;display:grid;place-items:center}
 .searchbox{margin:12px 0 8px}
 .plist{display:grid;gap:6px;max-height:52vh;overflow:auto}
+.psrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface2)}
+.psrow .pn{flex:1 1 150px;min-width:0;font-weight:600;overflow-wrap:anywhere}
+.psrow .pbtns{display:flex;gap:6px;flex-wrap:wrap}
+.psbar{display:flex;gap:8px;align-items:center}
+.psbar input{flex:1;min-width:0}
+.psbar .opt{flex:none}
 .prow{display:flex;align-items:center;gap:10px;min-height:52px;padding:6px 8px 6px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface2)}
 .prow.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--surface))}
 .prow .pn{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -428,7 +434,7 @@ let DB=null,pendingOps=[],chain=Promise.resolve();
 function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'base'});}
 const HISTKEY='cricketscorer.hist.v1',SYNCKEY='cricketscorer.sync.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
-const SYNC_URL='https://script.google.com/macros/s/AKfycbzYjm71bYWA4ycbm_DVM6v3jQDvDFi7M6j5fp_LOQSTe0qcQnLpum0_gMrCg7nM1ISYBw/exec';
+const SYNC_URL='';
 let HIST=[];const SYNC={url:SYNC_URL,status:'',sheet:'',state:'idle',last:null,hide:null,ready:true};
 const STATEKEY='cricketscorer.stateat.v1';
 let STATEAT='';try{STATEAT=localStorage.getItem(STATEKEY)||'';}catch(e){}
@@ -1084,7 +1090,7 @@ function histAct(a,d){
 /* ---------- app state ---------- */
 let M=null;
 function freshSetup(){return {fmt:'T20',overs:'20',maxper:'',tossMode:'flip',caller:'0',call:'heads',coin:{state:'idle',result:''},winner:'',choice:'',slots:[{teamId:'',name:'',sel:[],newp:'',cap:'',wk:''},{teamId:'',name:'',sel:[],newp:'',cap:'',wk:''}]};}
-function freshUi(){return {mode:'n',wk:null,tab:'score',view:0,armed:null,copyText:null,screen:'setup',setup:freshSetup(),squads:{newp:'',editor:{teamId:'',name:'',sel:[],newp:''}},focus:null,top:false,chg:false,sub:null,menu:false,hist:null,tourId:null,tm:null,tnew:{name:'',type:'IPL',overs:'10'}};}
+function freshUi(){return {mode:'n',wk:null,tab:'score',view:0,armed:null,copyText:null,screen:'setup',setup:freshSetup(),squads:{newp:'',editor:{teamId:'',name:'',sel:[],newp:''}},focus:null,top:false,chg:false,sub:null,menu:false,hist:null,tourId:null,tm:null,tnew:{name:'',type:'IPL',overs:'10'},psq:'',psf:'all',ps:null};}
 let ui=freshUi();
 function save(){if(!M)return;M.savedAt=new Date().toISOString();LIVEAT=M.savedAt;persistLive();stamp();syncSoon();try{localStorage.setItem(KEY,JSON.stringify(M));}catch(e){}livePush();}
 
@@ -1825,6 +1831,99 @@ function renderSetup(){
   tossHtml()+
   '<div class="actions"><button class="btn primary" data-act="start">Start match</button></div></div>';
 }
+/* ---------- find a player: search all saved players, add to a team, remove from the list, or remove from a team (each asks first) ---------- */
+function teamOfPlayer(id){return LIB.teams.find(t=>t.playerIds.indexOf(id)>=0)||null;}
+function psResultsHtml(){
+  const q=(ui.psq||'').trim().toLowerCase(),inTeamMode=ui.psf==='team';
+  if(!LIB.players.length) return '<div class="empty">No players saved yet.</div>';
+  if(!q&&!inTeamMode) return '<div class="empty">Type a name to search all '+plural(LIB.players.length,'saved player')+'.</div>';
+  let list=LIB.players.filter(p=>{
+    const tm=teamOfPlayer(p.id);
+    if(inTeamMode&&!tm) return false;
+    if(!q) return true;
+    return p.name.toLowerCase().indexOf(q)>=0||(inTeamMode&&tm.name.toLowerCase().indexOf(q)>=0);
+  });
+  if(!list.length) return '<div class="empty">'+(inTeamMode?'No players in a team match':'No saved players match')+' "'+esc(ui.psq||'')+'".</div>';
+  const total=list.length;list=list.slice(0,40);
+  const noTeams=!LIB.teams.length;
+  return '<div class="plist" style="max-height:none">'+list.map(p=>{
+    const tm=teamOfPlayer(p.id);
+    const sub='<span class="sub">'+(tm?'In team: '+esc(tm.name):'Not in a team')+'</span>';
+    const btns=inTeamMode
+      ?'<button class="btn small danger" data-act="ps-unteam-open" data-id="'+esc(p.id)+'">Remove from team</button>'
+      :(tm?'<button class="btn small" disabled title="Already in '+esc(tm.name)+'">In a team</button>'
+         :'<button class="btn small primary" data-act="ps-add-open" data-id="'+esc(p.id)+'"'+(noTeams?' disabled title="Create a team first"':'')+'>Add to team</button>')+
+        '<button class="btn small danger" data-act="ps-remove-open" data-id="'+esc(p.id)+'">Remove</button>';
+    return '<div class="psrow"><span class="pn">'+esc(p.name)+sub+'</span><span class="pbtns">'+btns+'</span></div>';
+  }).join('')+'</div>'+(total>40?'<p class="note">Showing the first 40 of '+total+'. Type more of the name to narrow it down.</p>':'');
+}
+function findPlayerHtml(){
+  const on=ui.psf==='team';
+  return '<section class="panel pad"><h3>Find a player</h3>'+
+    '<div class="psbar"><input id="psq" type="search" data-f="psq" value="'+esc(ui.psq||'')+'" placeholder="'+(on?'Search players in a team or a team name':'Search all saved players')+'" aria-label="Search saved players" autocomplete="off">'+
+    '<button class="opt" data-act="ps-filter" aria-pressed="'+on+'" aria-label="Search only players who are in a team">In a team</button></div>'+
+    '<p class="note">'+(on?'Showing only players who are in a team. Remove from team keeps them in your saved players.':'Search all saved players. Add to team puts a player in one team. Remove deletes them from your whole list.')+'</p>'+
+    '<div id="psres">'+psResultsHtml()+'</div></section>';
+}
+function psModal(){
+  const ps=ui.ps,p=LIB.players.find(x=>x.id===ps.id);
+  if(!p) return '';
+  const cur=teamOfPlayer(p.id),nm='<b>'+esc(p.name)+'</b>';
+  let title,body,go;
+  if(ps.kind==='add'){
+    title='Add to team';
+    if(cur){
+      body='<p>'+nm+' is already in <b>'+esc(cur.name)+'</b>, so they cannot be added to another team. Remove them from that team first.</p>';go='';
+    }else{
+      const opts=LIB.teams.map(t=>'<option value="'+esc(t.id)+'"'+(ps.teamId===t.id?' selected':'')+(t.playerIds.length>=55?' disabled':'')+'>'+esc(t.name)+(t.playerIds.length>=55?' (full)':'')+'</option>').join('');
+      const tm=LIB.teams.find(t=>t.id===ps.teamId);
+      body='<label class="field" style="margin-top:12px"><span>Which team?</span><select data-f="ps-team" aria-label="Choose a team"><option value="">Choose a team</option>'+opts+'</select></label>'+
+        '<p style="margin:14px 0 0">'+(tm?'Are you sure you want to add '+nm+' to <b>'+esc(tm.name)+'</b>?':'Choose a team to add '+nm+' to.')+'</p>';
+      go=tm?'<button class="btn primary" data-act="ps-confirm">Yes, add to team</button>':'<button class="btn primary" disabled>Yes, add to team</button>';
+    }
+  }else if(ps.kind==='remove'){
+    title='Remove player';
+    body='<p>Are you sure you want to remove '+nm+' from your entire list of saved players?'+(cur?' They will also be taken out of <b>'+esc(cur.name)+'</b>.':'')+' This cannot be undone.</p>';
+    go='<button class="btn danger" data-act="ps-confirm">Yes, remove</button>';
+  }else{
+    title='Remove from team';
+    if(!cur){body='<p>'+nm+' is not in a team any more.</p>';go='';}
+    else{body='<p>Are you sure you want to remove '+nm+' from <b>'+esc(cur.name)+'</b>? They stay in your list of saved players.</p>';go='<button class="btn danger" data-act="ps-confirm">Yes, remove from team</button>';}
+  }
+  return '<div class="scrim" data-act="ps-close-bg"><div class="sheet" role="dialog" aria-modal="true" aria-label="'+esc(title)+'"><h2>'+esc(title)+'</h2>'+body+
+    '<div class="actions" style="margin-top:18px">'+go+'<button class="btn" data-act="ps-cancel">'+(go?'Cancel':'Close')+'</button></div></div></div>';
+}
+function psSyncEditor(teamId,pid,adding){
+  /* If that team is open in the editor, keep the editor in step so it cannot save an out-of-date squad over the change. */
+  const ed=ui.squads&&ui.squads.editor;
+  if(!ed||ed.teamId!==teamId) return;
+  if(adding){if(ed.sel.indexOf(pid)<0) ed.sel.push(pid);}
+  else{ed.sel=ed.sel.filter(x=>x!==pid);if(ed.cap===pid) ed.cap='';if(ed.wk===pid) ed.wk='';}
+}
+function psConfirm(){
+  const ps=ui.ps;if(!ps) return;
+  const p=LIB.players.find(x=>x.id===ps.id);
+  if(!p){ui.ps=null;return;}
+  const cur=teamOfPlayer(p.id);
+  if(ps.kind==='add'){
+    const t=LIB.teams.find(x=>x.id===ps.teamId);
+    if(!t){toast('Choose a team first');return;}
+    if(cur){toast(p.name+' is already in '+cur.name);ui.ps=null;return;}
+    if(t.playerIds.length>=55){toast(t.name+' already has 55 players');return;}
+    libPutTeam(t.id,t.name,t.playerIds.concat([p.id]),t.capId,t.wkId);
+    psSyncEditor(t.id,p.id,true);
+    toast(p.name+' added to '+t.name);
+  }else if(ps.kind==='remove'){
+    libDelPlayer(p.id);
+    toast(p.name+' removed from your saved players');
+  }else{
+    if(!cur){ui.ps=null;return;}
+    libPutTeam(cur.id,cur.name,cur.playerIds.filter(x=>x!==p.id),cur.capId===p.id?'':cur.capId,cur.wkId===p.id?'':cur.wkId);
+    psSyncEditor(cur.id,p.id,false);
+    toast(p.name+' removed from '+cur.name);
+  }
+  ui.ps=null;
+}
 function squadsHtml(){
   const rows=LIB.players.map(p=>{
     const armed=ui.armed==='dp'+p.id;
@@ -1841,7 +1940,7 @@ function squadsHtml(){
       '<button class="btn small'+(armed?' armed':' danger')+'" data-act="'+(armed?'del-team':'del-team-arm')+'" data-id="'+esc(t.id)+'">'+(armed?'Confirm remove':'Remove')+'</button></div></div>';
   }).join('');
   const ed=ui.squads.editor;
-  return '<div class="wrap">'+topNav()+'<div class="cols"><div>'+
+  return '<div class="wrap">'+topNav()+'<div class="cols"><div>'+findPlayerHtml()+
     '<section class="panel"><h3>Players <em>'+LIB.players.length+' saved</em></h3>'+
       '<div style="padding:0 14px 12px">'+storeNote()+'<div class="addrow"><input id="np-lib" data-k="lib" data-f="newp" value="'+esc(ui.squads.newp)+'" maxlength="40" autocomplete="off" placeholder="New player name" aria-label="New player name"><button class="btn small primary" data-act="add-player" data-k="lib">Add player</button></div></div>'+
       (rows||'<div class="empty">No players saved yet. Add your first player above. They will be there to pick whenever you start a match.</div>')+
@@ -1932,6 +2031,12 @@ function actLib(a,d){
     case 'del-player':libDelPlayer(d.id);return true;
     case 'del-team-arm':ui.armed='dt'+d.id;return true;
     case 'del-team':libDelTeam(d.id);if(ui.squads.editor.teamId===d.id) ui.squads.editor={teamId:'',name:'',sel:[],newp:''};return true;
+    case 'ps-filter':ui.psf=ui.psf==='team'?'all':'team';ui.focus='psq';return true;
+    case 'ps-add-open':ui.ps={kind:'add',id:d.id,teamId:''};return true;
+    case 'ps-remove-open':ui.ps={kind:'remove',id:d.id};return true;
+    case 'ps-unteam-open':ui.ps={kind:'unteam',id:d.id};return true;
+    case 'ps-cancel':ui.ps=null;return true;
+    case 'ps-confirm':psConfirm();return true;
     case 'unpick':{const p=pk(d.k),i=p.sel.indexOf(d.id);if(i>=0) p.sel.splice(i,1);return true;}
     case 'move':{const p=pk(d.k),i=+d.i,j=i+ +d.d;if(j>=0&&j<p.sel.length){const t=p.sel[i];p.sel[i]=p.sel[j];p.sel[j]=t;}return true;}
     case 'toss-mode':ui.setup.tossMode=d.v;resetToss();return true;
@@ -2439,7 +2544,7 @@ function render(){
   let ss=null,se=null;
   try{ss=ae.selectionStart;se=ae.selectionEnd;}catch(e){}
   const sy=window.scrollY;
-  $('app').innerHTML=(ui.hist?histHtml():M?renderMatch():renderSetup())+((!M&&!ui.hist&&ui.pickK!=null)?pickModal():'')+((!M&&!ui.hist&&ui.teamK!=null)?teamModal():'')+((!M&&!ui.hist&&ui.tm)?tourModal():'');
+  $('app').innerHTML=(ui.hist?histHtml():M?renderMatch():renderSetup())+((!M&&!ui.hist&&ui.pickK!=null)?pickModal():'')+((!M&&!ui.hist&&ui.teamK!=null)?teamModal():'')+((!M&&!ui.hist&&ui.tm)?tourModal():'')+((!M&&!ui.hist&&ui.screen==='squads'&&ui.ps)?psModal():'');
   const want=ui.focus||fid;
   if(want){
     const el=$(want);
@@ -2463,6 +2568,7 @@ document.addEventListener('click',e=>{
   if(el.dataset.act==='wk-cancel-bg'){if(e.target===el){ui.wk=null;render();}return;}
   if(el.dataset.act==='tm-close-bg'){if(e.target===el){ui.tm=null;render();}return;}
   if(el.dataset.act==='team-close-bg'){if(e.target===el){ui.teamK=null;render();}return;}
+  if(el.dataset.act==='ps-close-bg'){if(e.target===el){ui.ps=null;render();}return;}
   if(el.dataset.act==='pick-close-bg'){if(e.target===el){ui.pickK=null;render();}return;}
   if(el.dataset.act==='sub-cancel-bg'){if(e.target===el){ui.sub=null;render();}return;}
   act(el.dataset.act,el.dataset);
@@ -2470,6 +2576,7 @@ document.addEventListener('click',e=>{
 function updateToss(){document.querySelectorAll('[data-tn]').forEach(el=>{el.textContent=tn(+el.dataset.tn);});}
 document.addEventListener('input',e=>{
   if(e.target.dataset&&e.target.dataset.f==='sync'){SYNC.url=e.target.value.trim();persistSync();SYNC.last=null;syncTry=0;clearTimeout(syncRetryT);clearTimeout(syncUrlT);SYNC.ready=!SYNC.url;if(SYNC.url) syncUrlT=setTimeout(()=>syncStart(()=>syncPush(true)),1200);return;}
+  if(e.target.dataset&&e.target.dataset.f==='psq'){ui.psq=e.target.value;const l=$('psres');if(l) l.innerHTML=psResultsHtml();return;}
   if(e.target.dataset&&e.target.dataset.f==='psearch'){ui.pickQ=e.target.value;const l=$('plist');if(l&&ui.pickK!=null) l.innerHTML=pickListHtml(ui.pickK);return;}
   if(e.target.dataset&&e.target.dataset.f==='tmsearch'){if(ui.tm){ui.tm.q=e.target.value;const T=curTour(),l=$('tmlist');if(T&&l) l.innerHTML=tmTeamsListHtml(T);}return;}
   if(e.target.dataset&&e.target.dataset.f==='tsearch'){ui.teamQ=e.target.value;const l=$('tlist');if(l&&ui.teamK!=null) l.innerHTML=teamListHtml(ui.teamK);return;}
@@ -2493,6 +2600,7 @@ document.addEventListener('change',e=>{
   const t=e.target,d=t.dataset||{};
   if(!M){
     if(d.s){ui.setup[d.s]=t.value;if(d.s==='overs'){const f=ui.setup.fmt;if(f!=='Custom'){ui.setup.fmt=((f==='IPL'||f==='T20')&&t.value==='20')?f:t.value==='20'?'T20':t.value==='50'?'ODI':'Custom';}render();}return;}
+    if(d.f==='ps-team'){if(ui.ps) ui.ps.teamId=t.value;render();return;}
     if(d.f==='name'&&d.k==='e'){autoSaveEditor();return;}
     if(d.f==='tp-owner'){
       const T=curTour();
@@ -2536,7 +2644,7 @@ document.addEventListener('change',e=>{
 });
 document.addEventListener('keydown',e=>{
   const t=e.target,d=t.dataset||{};
-  if(!M&&e.key==='Escape'&&(ui.pickK!=null||ui.teamK!=null||ui.tm)){ui.pickK=null;ui.teamK=null;ui.tm=null;render();return;}
+  if(!M&&e.key==='Escape'&&(ui.pickK!=null||ui.teamK!=null||ui.tm||ui.ps)){ui.pickK=null;ui.teamK=null;ui.tm=null;ui.ps=null;render();return;}
   if(!M&&d.f==='newp'&&e.key==='Enter'){e.preventDefault();act('add-player',{k:d.k});return;}
   if(!M||e.metaKey||e.ctrlKey||e.altKey) return;
   const tag=(t.tagName||'').toLowerCase();
