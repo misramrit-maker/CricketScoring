@@ -459,7 +459,7 @@ function canon(v){
 function mergeRecs(a,b,pre){
   const map={};
   [a||[],b||[]].forEach(list=>list.forEach(r=>{if(!r||!r.id) return;const c=map[r.id];if(!c||String(r.u||'')>=String(c.u||'')) map[r.id]=r;}));
-  return Object.keys(map).map(k=>map[k]).filter(r=>{const t=DEL[pre+r.id];return !(t&&String(t)>=String(r.u||''));});
+  return Object.keys(map).map(k=>map[k]).filter(r=>!DEL[pre+r.id]);
 }
 /* Everything that is shared between devices, in a fixed order so two copies with the same data look identical. */
 function coreObj(){
@@ -774,7 +774,7 @@ function mergeSheetLib(d){
     const idList=String(r[5]||'').split(',').map(s=>s.trim()).filter(Boolean);
     const idNames=idList.map(libName);
     if(idList.length&&idNames.every(Boolean)&&idNames.join(', ').toLowerCase()===names.join(', ').toLowerCase()) ids=uniq(idList);
-    else ids=uniq(names.map(nm=>ensure(nm)).filter(Boolean));
+    else ids=uniq(names.map(nm=>{const p=byName(nm);return p?p.id:'';}).filter(Boolean));
     const capName=normName(r[3]),wkName=normName(r[4]);
     const cap=capName&&byName(capName)?byName(capName).id:'',wk=wkName&&byName(wkName)?byName(wkName).id:'';
     const t=LIB.teams.find(x=>x.id===String(r[0])||x.name.toLowerCase()===name.toLowerCase());
@@ -2511,7 +2511,7 @@ function act(a,d){
     case 'end-arm':ui.armed='end';break;
     case 'end-confirm':inn.declared=true;break;
     case 'new-arm':ui.armed='new';break;
-    case 'new-confirm':if(!M.recKey&&M.innings.some(x=>x.events.length)) histRecord(true);tourAbandon();clearSaved();M=null;liveClear();ui=freshUi();ui.top=true;render();return;
+    case 'new-confirm':if(!M.recKey&&M.innings.some(x=>x.events.length)) histRecord(true);tourAbandon();clearSaved();M=null;liveClear();syncSoon();ui=freshUi();ui.top=true;render();return;
     case 'copy':{
       const text=summaryText(analyse());
       const fallback=()=>{ui.copyText=text;render();};

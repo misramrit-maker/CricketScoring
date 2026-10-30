@@ -126,9 +126,9 @@ function mergeRecs_(x, y, pre, del) {
   });
   var out = [];
   for (var id in map) {
-    var r = map[id], t = del[pre + id];
-    if (t && String(t) >= String(r.u || '')) continue;
-    out.push(r);
+    // A removed record stays removed. Ids are never reused, and device clocks can differ, so no time is compared.
+    if (del[pre + id]) continue;
+    out.push(map[id]);
   }
   return out;
 }
