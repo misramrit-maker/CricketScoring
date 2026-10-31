@@ -440,7 +440,7 @@ const LIB={players:[],teams:[],mode:'loading'};   // mode: loading | db | local
 let DB=null,pendingOps=[],chain=Promise.resolve();
 
 function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'base'});}
-const HISTKEY='cricketscorer.hist.v1',SYNCKEY='cricketscorer.sync.v1';
+const HISTKEY='cricketscorer.hist.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
 const SYNC_URL='';
 let HIST=[];const SYNC={url:SYNC_URL,status:'',sheet:'',state:'idle',last:null,hide:null,ready:true};
@@ -500,10 +500,7 @@ function pendingHtml(){
 function stamp(){if(APPLYING) return;STATEAT=new Date().toISOString();try{localStorage.setItem(STATEKEY,STATEAT);}catch(e){}}
 function persistHist(){stamp();try{localStorage.setItem(HISTKEY,JSON.stringify(HIST));}catch(e){}}
 function loadHist(){try{const h=JSON.parse(localStorage.getItem(HISTKEY)||'null');if(Array.isArray(h)) HIST=h;}catch(e){}
-  try{const y=JSON.parse(localStorage.getItem(SYNCKEY)||'null');if(y&&typeof y.url==='string'&&y.url) SYNC.url=y.url;}catch(e){}
-  loadSyncLink();}
-function loadSyncLink(){try{const q=new URLSearchParams(location.search).get('sync');if(q&&/^https:\/\//.test(q)){SYNC.url=q;persistSync();history.replaceState(null,'',location.pathname+location.hash);}}catch(e){}}
-function persistSync(){try{localStorage.setItem(SYNCKEY,JSON.stringify({url:SYNC.url}));}catch(e){}}
+}
 function persistLib(){stamp();try{localStorage.setItem(LIBKEY,JSON.stringify({players:LIB.players,teams:LIB.teams}));}catch(e){}}
 function loadLib(){
   try{const s=JSON.parse(localStorage.getItem(LIBKEY)||'null');
@@ -760,7 +757,7 @@ function syncSoon(){
   if(b.sig===SYNC.last&&SYNC.state!=='fail') return;
   setSync('syncing');clearTimeout(syncT);syncT=setTimeout(()=>{syncT=null;syncPush(false);},250);
 }
-let syncTry=0,syncRetryT=null,syncUrlT=null;
+let syncTry=0,syncRetryT=null;
 /* Players and teams saved in the spreadsheet (the Players and Teams tabs) are brought into the app, so they can be picked for a match on any device.
    Nothing is deleted: a name that is new is added, and a team gets any extra players listed for it in the sheet. */
 function mergeSheetLib(d){
@@ -1058,9 +1055,8 @@ function histHtml(){
     '<div class="actions" style="margin-top:0"><button class="btn small" data-act="hist-close">&larr; Back</button></div>'+
     '<section class="panel pad"><h1>Match history</h1>'+catBtns('hist-filter',ui.histFilter||'all')+(LIB.mode==='db'?'<p class="note">Saved with this app and kept between sessions.</p>':'<p class="note">Saved in this browser only.</p>')+items+'</section>'+
     '<section class="panel pad" id="syncpanel"><h3>Spreadsheet sync</h3>'+
-    '<label class="field"><span>Sync URL</span><input id="syncurl" type="url" inputmode="url" autocomplete="off" placeholder="Paste your Sync URL here" value="'+esc(SYNC.url)+'" data-f="sync"></label>'+
-    '<p class="note">All your data (players, teams, matches and the live ball-by-ball) is sent to this address whenever anything changes. Players and teams you change in the sheet are loaded back into the app within a few seconds.'+(SYNC.status?' <b>'+esc(SYNC.status)+'</b>':'')+'</p>'+
-    '<div class="actions"><button class="btn" data-act="sync-all"'+(SYNC.url?'':' disabled')+'>Send everything now</button><button class="btn" data-act="sync-link"'+(SYNC.url?'':' disabled')+'>Copy link for other devices</button><button class="btn" data-act="sync-pull"'+(SYNC.url?'':' disabled')+'>Sync both ways now</button><button class="btn" data-act="sync-test"'+(SYNC.url?'':' disabled')+'>Check connection and add headings</button></div>'+
+    '<p class="note">All your data (players, teams, matches and the live ball-by-ball) is sent to the spreadsheet whenever anything changes.'+(SYNC.url?'':' Spreadsheet sync is off: add the Sync URL to the index.html file to switch it on.')+' Players and teams you change in the sheet are loaded back into the app within a few seconds.'+(SYNC.status?' <b>'+esc(SYNC.status)+'</b>':'')+'</p>'+
+    '<div class="actions"><button class="btn" data-act="sync-all"'+(SYNC.url?'':' disabled')+'>Send everything now</button><button class="btn" data-act="sync-pull"'+(SYNC.url?'':' disabled')+'>Sync both ways now</button><button class="btn" data-act="sync-test"'+(SYNC.url?'':' disabled')+'>Check connection and add headings</button></div>'+
     '<h3 style="margin-top:16px">Save the whole history</h3>'+
     '<div class="actions" style="margin-top:0"><button class="btn primary" data-act="export-sheet"'+(HIST.length?'':' disabled')+'>Save to Google Sheet</button><button class="btn" data-act="export-csv"'+(HIST.length?'':' disabled')+'>Download CSV</button></div>'+
     (SYNC.sheet?'<p class="note"><b>'+esc(SYNC.sheet)+'</b></p>':'')+'</section></div>';
@@ -1081,10 +1077,6 @@ function histAct(a,d){
     case 'hist-del-arm':ui.armed='h:'+d.id;break;
     case 'hist-del':{const id=d.id;HIST=HIST.filter(x=>x.id!==id);tomb('m:'+id);persistHist();syncSoon();ui.armed=null;remote(db=>db.doc('matches/'+id).delete());break;}
     case 'sync-all':syncPush(true);return true;
-    case 'sync-link':{
-      const lk=location.origin+location.pathname+'?sync='+encodeURIComponent(SYNC.url);
-      try{navigator.clipboard.writeText(lk).then(()=>toast('Link copied. Open it on another device.'),()=>{SYNC.status='Link: '+lk;render();});}catch(e){SYNC.status='Link: '+lk;}
-      break;}
     case 'sync-pull':{
       SYNC.status='Syncing both ways...';
       syncBoth().then(msg=>{SYNC.status=msg;if(ui.hist) render();});
@@ -1801,14 +1793,9 @@ function actTour(a,d){
 }
 
 /* ---------- setup / squads screens ---------- */
-function noSyncHtml(){
-  if(SYNC.url||LIB.mode==='db') return '';
-  return '<section class="panel pad nosync" role="alert"><h3>Not shared yet</h3><p class="note" style="margin-top:0">This device is not connected to the shared spreadsheet, so what you add stays on this device and other devices cannot see it. Paste the Sync URL once (the Google Apps Script web app address ending in /exec). To set up other devices, open the app, then press "Copy link for other devices" in Match history.</p>'+
-    '<label class="field"><span>Sync URL</span><input id="syncurl2" type="url" inputmode="url" autocomplete="off" placeholder="Paste your Sync URL here" value="" data-f="sync"></label></section>';
-}
 function topNav(){
   const t=[['setup','New match'],['squads','Players & teams'],['tours','Tournaments']].map(x=>'<button class="tab" role="tab" aria-selected="'+(ui.screen===x[0])+'" data-act="screen" data-v="'+x[0]+'">'+esc(x[1])+'</button>').join('');
-  return '<div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div><div class="tabs three" role="tablist">'+t+'</div>'+noSyncHtml()+pendingHtml();
+  return '<div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div><div class="tabs three" role="tablist">'+t+'</div>'+pendingHtml();
 }
 function storeNote(){
   return '<p class="note">'+(LIB.mode==='db'?'Players, teams and the live match are shared with every device that opens this page, and kept between sessions.':LIB.mode==='loading'?'Connecting to your saved players...':'Players and teams are saved in this browser only.')+'</p>';
@@ -2615,7 +2602,6 @@ document.addEventListener('click',e=>{
 });
 function updateToss(){document.querySelectorAll('[data-tn]').forEach(el=>{el.textContent=tn(+el.dataset.tn);});}
 document.addEventListener('input',e=>{
-  if(e.target.dataset&&e.target.dataset.f==='sync'){SYNC.url=e.target.value.trim();persistSync();SYNC.last=null;syncTry=0;clearTimeout(syncRetryT);clearTimeout(syncUrlT);SYNC.ready=!SYNC.url;if(SYNC.url) syncUrlT=setTimeout(()=>syncStart(()=>syncPush(true)),1200);return;}
   if(e.target.dataset&&e.target.dataset.f==='psq'){ui.psq=e.target.value;const l=$('psres');if(l) l.innerHTML=psResultsHtml();return;}
   if(e.target.dataset&&e.target.dataset.f==='psearch'){ui.pickQ=e.target.value;const l=$('plist');if(l&&ui.pickK!=null) l.innerHTML=pickListHtml(ui.pickK);return;}
   if(e.target.dataset&&e.target.dataset.f==='tmsearch'){if(ui.tm){ui.tm.q=e.target.value;const T=curTour(),l=$('tmlist');if(T&&l) l.innerHTML=tmTeamsListHtml(T);}return;}
