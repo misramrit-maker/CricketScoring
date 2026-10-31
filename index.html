@@ -1033,7 +1033,7 @@ function menuHtml(){
 function histSorted(){return HIST.slice().sort((a,b)=>cmpS(String(b.at||''),String(a.at||''))||cmpS(String(b.id),String(a.id)));}
 function histCardHtml(){
   const r=HIST.find(x=>x.id===ui.histId);
-  const head='<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun &middot; v'+BUILD+'</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div>'+
+  const head='<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div>'+
     '<div class="actions" style="margin-top:0"><button class="btn small" data-act="hist-back">&larr; '+(ui.histFrom==='tours'?'Results':ui.histFrom==='close'?'Back':'Match history')+'</button></div>';
   if(!r) return head+'<section class="panel pad"><p class="muted">That match is no longer saved.</p></section></div>';
   const d=fmtDate(r.at);
@@ -1076,7 +1076,7 @@ function resultsHtml(){
   const reg=histSorted().filter(r=>!r.tn&&r.result);
   const tourPart=(rf!=='reg')?('<h2 class="catlabel">Tournament match</h2>'+(blocks||'<section class="panel pad"><p class="muted">No tournament series results yet.</p></section>')):'';
   const regPart=(rf!=='tour')?('<h2 class="catlabel">Regular match</h2>'+(reg.length?reg.map(regularResultHtml).join(''):'<section class="panel pad"><p class="muted">No regular match results yet.</p></section>')):'';
-  return '<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun &middot; v'+BUILD+'</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div>'+
+  return '<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div>'+
     '<div class="actions" style="margin-top:0"><button class="btn small" data-act="hist-close">&larr; Back</button></div>'+
     '<section class="panel pad"><h1>Results</h1><p class="note">Results sorted into tournament matches and regular matches, with the date of each match. Tournament series show the score between the two teams and the result of every match in it. Every scorecard is also in Match history.</p>'+catBtns('res-filter',rf)+'</section>'+
     tourPart+regPart+'</div>';
@@ -1095,7 +1095,7 @@ function histHtml(){
       '<div class="note">'+esc(r.toss)+'</div>'+
       '<div class="actions" style="margin-top:6px"><button class="btn small primary" data-act="hist-view" data-id="'+esc(r.id)+'">Full scorecard</button><button class="btn small'+(armed?' armed':' danger')+'" data-act="'+(armed?'hist-del':'hist-del-arm')+'" data-id="'+esc(r.id)+'">'+(armed?'Tap again to delete':'Delete')+'</button></div></div>';
   }).join(''):'<p class="muted">'+(HIST.length?'No '+(hf==='tour'?'tournament':'regular')+' matches yet.':'No matches yet. A match is saved here as soon as it has a result.')+'</p>';
-  return '<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun &middot; v'+BUILD+'</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div>'+
+  return '<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div>'+
     '<div class="actions" style="margin-top:0"><button class="btn small" data-act="hist-close">&larr; Back</button></div>'+
     '<section class="panel pad"><h1>Match history</h1>'+catBtns('hist-filter',ui.histFilter||'all')+(LIB.mode==='db'?'<p class="note">Saved with this app and kept between sessions.</p>':'<p class="note">'+(SYNC.url?'Saved in this browser and shared through the spreadsheet.':'Saved in this browser only.')+'</p>')+items+'</section>'+
     '<section class="panel pad" id="syncpanel"><h3>Spreadsheet sync</h3>'+
@@ -1839,7 +1839,7 @@ function actTour(a,d){
 /* ---------- setup / squads screens ---------- */
 function topNav(){
   const t=[['setup','New match'],['squads','Players & teams'],['tours','Tournaments']].map(x=>'<button class="tab" role="tab" aria-selected="'+(ui.screen===x[0])+'" data-act="screen" data-v="'+x[0]+'">'+esc(x[1])+'</button>').join('');
-  return '<div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun &middot; v'+BUILD+'</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div><div class="tabs three" role="tablist">'+t+'</div>'+syncWarnHtml()+pendingHtml();
+  return '<div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div><div class="tabs three" role="tablist">'+t+'</div>'+syncWarnHtml()+pendingHtml();
 }
 function storeNote(){
   return '<p class="note">'+(LIB.mode==='db'?'Players, teams and the live match are shared with every device that opens this page, and kept between sessions.':LIB.mode==='loading'?'Connecting to your saved players...':(SYNC.url?'Players and teams are saved in this browser and shared through the spreadsheet.':'Players and teams are saved in this browser only.'))+'</p>';
@@ -2148,7 +2148,7 @@ function renderMatch(){
   else body=scoreTab(A);
   const tabs=[['score','Score'],['card','Scorecard'],['overs','Overs'],['match','Match']].map(t=>
     '<button class="tab" role="tab" aria-selected="'+(ui.tab===t[0])+'" data-act="tab" data-v="'+t[0]+'">'+t[1]+'</button>').join('');
-  return '<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun &middot; v'+BUILD+'</span></div><div class="topr">'+syncIndHtml()+'<div class="vs">'+esc(M.teams[0].name)+' v '+esc(M.teams[1].name)+'</div>'+menuHtml()+'</div></div>'+
+  return '<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+'<div class="vs">'+esc(M.teams[0].name)+' v '+esc(M.teams[1].name)+'</div>'+menuHtml()+'</div></div>'+
     '<div class="tabs" role="tablist">'+tabs+'</div>'+body+'</div>'+(ui.wk?wicketModal(A):'')+(ui.sub?subModal(A):'');
 }
 
