@@ -829,7 +829,7 @@ function importLib(){
   let u;try{u=new URL(SYNC.url);if(u.protocol!=='https:'&&u.protocol!=='http:') throw 0;}catch(e){return Promise.resolve(0);}
   u.searchParams.set('action','lib');u.searchParams.set('_',String(Date.now()));
   let ctl=null,t=null;
-  try{ctl=new AbortController();t=setTimeout(()=>ctl.abort(),9000);}catch(e){}
+  try{ctl=new AbortController();t=setTimeout(()=>ctl.abort(),30000);}catch(e){}
   return Promise.resolve().then(()=>fetch(u.href,{credentials:'omit',redirect:'follow',signal:ctl?ctl.signal:undefined})).then(r=>r.json())
     .then(d=>{clearTimeout(t);const n=mergeSheetLib(d);if(n&&!M) render();return n;})
     .catch(()=>{clearTimeout(t);return 0;});
@@ -926,7 +926,8 @@ function sheetStatus(action){
   let u;try{u=new URL(SYNC.url);}catch(e){return Promise.resolve(null);}
   u.searchParams.set('action',action||'status');u.searchParams.set('_',String(Date.now()));
   let ctl=null,t=null;
-  try{ctl=new AbortController();t=setTimeout(()=>ctl.abort(),12000);}catch(e){}
+  /* Google scripts can be slow, so the full data and the counts get a long time before giving up. */
+  try{ctl=new AbortController();t=setTimeout(()=>ctl.abort(),(action==='state'||action==='counts')?70000:30000);}catch(e){}
   return Promise.resolve().then(()=>fetch(u.href,{credentials:'omit',redirect:'follow',signal:ctl?ctl.signal:undefined})).then(r=>r.json()).then(d=>{clearTimeout(t);noteReply(d);return d;}).catch(()=>{clearTimeout(t);noteReply(null);return null;});
 }
 /* Notes whether the Google script answered, and whether it is the current version, so a setup problem shows on screen instead of failing quietly. */

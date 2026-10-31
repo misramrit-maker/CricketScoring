@@ -614,7 +614,12 @@ function doGet(e) {
     try {
       got = lk.tryLock(15000);
       var ss1 = getSS_();
-      if (got) { try { absorbCommit_(ss1, props); } catch (xc) {} }
+      // Looking at the sheet for hand edits is slow, and the quick check before this call has just done it, so do it here only if it has not been done lately.
+      var lastAbs1 = Number(props.getProperty('lastAbs') || 0), nowAbs1 = new Date().getTime();
+      if (got && nowAbs1 - lastAbs1 >= 6000) {
+        props.setProperty('lastAbs', String(nowAbs1));
+        try { absorbCommit_(ss1, props); } catch (xc) {}
+      }
       var text = loadChunks_(ss1, 'App data');
       return out_({ ok: true, state: text, stateAt: props.getProperty('stateAt') || '', stateBy: props.getProperty('stateBy') || '' });
     } catch (errS) {
