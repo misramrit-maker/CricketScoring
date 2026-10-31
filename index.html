@@ -8,7 +8,15 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
-<style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
+<style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}
+.resumebar{border:2px solid var(--accent);box-shadow:0 6px 18px rgba(10,38,37,.25)}
+.resumebar .resumebtn{flex:1 1 100%;font-size:17px;padding:14px 16px;min-height:52px}
+.resumefab{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:30;display:flex;justify-content:center;pointer-events:none}
+.resumefab .btn{pointer-events:auto;width:100%;max-width:520px;min-height:54px;font-size:17px;box-shadow:0 8px 24px rgba(10,38,37,.4)}
+.livedot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--wicket);margin-right:8px;animation:livepulse 1.4s ease-in-out infinite}
+@keyframes livepulse{0%,100%{opacity:1}50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.livedot{animation:none}}
+</style>
 <style>
 /* Layout: scorebook column on phones; on tablets the scoring screen splits into board and crease on the left, keypad on the right. Players and teams are saved and picked from lists. */
 :root{
@@ -476,7 +484,7 @@ function sameMatch(a,b){return a&&b&&(a.uid&&b.uid?a.uid===b.uid:a.teams[0].name
 /* Teams and score of a match held for this device, or null when it is already finished. */
 function liveInfo(L){
   const keep=M;let r=null;
-  try{M=L;const A=analyse();if(!matchOutcome(M,A)) r={teams:L.teams[0].name+' v '+L.teams[1].name,score:A.map((S,i)=>L.teams[L.innings[i].bat].name+' '+S.runs+'/'+S.wkts+' ('+fmtOvers(S.balls)+' ov)').join(' | '),fmt:L.format||''};}
+  try{M=L;const A=analyse();if(!matchOutcome(M,A)) r={teams:L.teams[0].name+' v '+L.teams[1].name,score:A.map((S,i)=>L.teams[L.innings[i].bat].name+' '+S.runs+'/'+S.wkts+' ('+fmtOvers(S.balls)+' ov)').join(' | '),fmt:L.format||'',next:(function(){const k=Math.min(L.cur||0,A.length-1),S=A[k];if(!S) return '';return 'Innings '+(k+1)+' &middot; '+esc(L.teams[L.innings[k].bat].name)+' batting &middot; next ball: over '+(Math.floor(S.balls/6)+1)+', ball '+(S.balls%6+1);})()};}
   catch(e){r=null;}
   finally{M=keep;}
   return r;
@@ -485,8 +493,8 @@ function pendingHtml(){
   if(M||!PENDING) return '';
   const i=liveInfo(PENDING);if(!i) return '';
   const arm=ui.armed==='pend';
-  return '<section class="panel pad"><h3>Match in progress</h3><p class="big" style="margin:0">'+esc(i.teams)+'</p><p class="muted" style="margin:4px 0 0">'+esc(i.fmt)+(i.score?' &middot; '+esc(i.score):'')+'</p><p class="note">This match is being scored on another device. Press the button to carry on scoring it here, or leave it and use the app as normal.</p>'+
-    '<div class="actions"><button class="btn primary" data-act="resume-pending">Continue scoring here</button><button class="btn'+(arm?' armed':' danger')+'" data-act="'+(arm?'pend-discard':'pend-arm')+'">'+(arm?'Tap again to discard':'Discard match')+'</button></div></section>';
+  return '<section class="panel pad resumebar" role="region" aria-label="Match in progress"><h3><span class="livedot" aria-hidden="true"></span>Match in progress</h3><p class="big" style="margin:0">'+esc(i.teams)+'</p><p class="muted" style="margin:4px 0 0">'+esc(i.fmt)+(i.score?' &middot; '+esc(i.score):'')+'</p>'+(i.next?'<p class="muted" style="margin:4px 0 0"><b>'+i.next+'</b></p>':'')+'<p class="note">This match is being scored on another device. Press the button to carry on from the exact ball, with the same teams, players and format.</p>'+
+    '<div class="actions"><button class="btn primary resumebtn" data-act="resume-pending">Continue scoring here</button><button class="btn'+(arm?' armed':' danger')+'" data-act="'+(arm?'pend-discard':'pend-arm')+'">'+(arm?'Tap again to discard':'Discard match')+'</button></div></section><div class="resumefab"><button class="btn primary" data-act="resume-pending">Continue scoring: '+esc(i.teams)+'</button></div>';
 }
 /* Marks the time of the latest change made on this device, so another device can tell whose data is newer. */
 function stamp(){if(APPLYING) return;STATEAT=new Date().toISOString();try{localStorage.setItem(STATEKEY,STATEAT);}catch(e){}}
@@ -1566,13 +1574,19 @@ function personDetailHtml(T,q){
   return '<div class="ppdetail" style="padding:6px 14px 12px"><div class="line"><b>Teams picked</b> '+(mine.length?mine.map(esc).join(', '):'none yet')+'</div>'+
     '<div class="line"><b>Match wins</b> '+(wins?wins.w:0)+'</div>'+(rows||'<div class="line muted">No matches set up for '+esc(q.name)+' yet.</div>')+'</div>';
 }
+function teamPickHtml(T,q){
+  if(!T.teams.length) return '<div class="note" style="padding:0 14px 8px">Add teams, then choose here which ones '+esc(q.name)+' plays as.</div>';
+  const chips=T.teams.map(t=>{const o=ownerOf(T,t.id),mine=o===q.id;
+    return '<button class="btn small'+(mine?' primary':'')+'" data-act="tp-team" data-id="'+esc(q.id)+'" data-t="'+esc(t.id)+'" aria-pressed="'+mine+'" title="'+(o&&!mine?'Currently '+esc(pName(T,o))+'. Press to give to '+esc(q.name):'')+'">'+(mine?'&#10003; ':'')+esc(t.name)+(o&&!mine?' ('+esc(pName(T,o))+')':'')+'</button>';}).join('');
+  return '<div style="padding:0 14px 10px"><div class="note" style="margin:0 0 6px">Teams '+esc(q.name)+' plays as (press to pick or clear):</div><div class="actions" style="margin-top:0">'+chips+'</div></div>';
+}
 function peopleHtml(T){
   const list=(T.people||[]).map(q=>{
     const mine=T.teams.filter(t=>ownerOf(T,t.id)===q.id).map(t=>t.name);
     const open=ui.tpView===q.id;
     return '<div class="rowline" style="align-items:flex-start"><div style="flex:1;min-width:0"><span class="name">'+esc(q.name)+'</span><span class="sub">Plays as: '+(mine.length?mine.map(esc).join(', '):'no team picked yet')+'</span></div>'+
       '<button class="btn small" data-act="tp-view" data-id="'+esc(q.id)+'" aria-expanded="'+open+'">'+(open?'Hide':'View teams')+'</button>'+
-      '<button class="btn small danger" data-act="tp-del" data-id="'+esc(q.id)+'" aria-label="Remove '+esc(q.name)+'">&times;</button></div>'+(open?personDetailHtml(T,q):'');
+      '<button class="btn small danger" data-act="tp-del" data-id="'+esc(q.id)+'" aria-label="Remove '+esc(q.name)+'">&times;</button></div>'+teamPickHtml(T,q)+(open?personDetailHtml(T,q):'');
   }).join('');
   const full=(T.people||[]).length>=PMAX;
   return '<section class="panel"><h3>People <em>'+(T.people||[]).length+' of '+PMAX+'</em></h3>'+
@@ -1741,6 +1755,15 @@ function actTour(a,d){
       T.fixtures.forEach(f=>{if(!f.done){if(f.pa===q.id) f.pa='';if(f.pb===q.id) f.pb='';}});
       if(ui.tpView===q.id) ui.tpView='';
       tlog(T,'Person removed: '+q.name);tourSave(T);return true;}
+    case 'tp-team':{
+      if(!T) return false;
+      const tm=T.teams.find(x=>x.id===d.t),q=(T.people||[]).find(x=>x.id===d.id);
+      if(!tm||!q) return false;
+      T.owner=T.owner||{};
+      const val=T.owner[tm.id]===q.id?'':q.id;
+      if(val) T.owner[tm.id]=val;else delete T.owner[tm.id];
+      T.fixtures.forEach(f=>{if(!f.done&&f.stage==='group'){if(f.a===tm.id) f.pa=val;if(f.b===tm.id) f.pb=val;}});
+      tlog(T,tm.name+' is played by '+(val?q.name:'no one yet'));tourSave(T);return true;}
     case 'tp-view':ui.tpView=ui.tpView===d.id?'':d.id;return true;
     case 'auto-group':{
       if(!T) return false;
@@ -1778,9 +1801,14 @@ function actTour(a,d){
 }
 
 /* ---------- setup / squads screens ---------- */
+function noSyncHtml(){
+  if(SYNC.url||LIB.mode==='db') return '';
+  return '<section class="panel pad nosync" role="alert"><h3>Not shared yet</h3><p class="note" style="margin-top:0">This device is not connected to the shared spreadsheet, so what you add stays on this device and other devices cannot see it. Paste the Sync URL once (the Google Apps Script web app address ending in /exec). To set up other devices, open the app, then press "Copy link for other devices" in Match history.</p>'+
+    '<label class="field"><span>Sync URL</span><input id="syncurl2" type="url" inputmode="url" autocomplete="off" placeholder="Paste your Sync URL here" value="" data-f="sync"></label></section>';
+}
 function topNav(){
   const t=[['setup','New match'],['squads','Players & teams'],['tours','Tournaments']].map(x=>'<button class="tab" role="tab" aria-selected="'+(ui.screen===x[0])+'" data-act="screen" data-v="'+x[0]+'">'+esc(x[1])+'</button>').join('');
-  return '<div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div><div class="tabs three" role="tablist">'+t+'</div>'+pendingHtml();
+  return '<div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div><div class="tabs three" role="tablist">'+t+'</div>'+noSyncHtml()+pendingHtml();
 }
 function storeNote(){
   return '<p class="note">'+(LIB.mode==='db'?'Players, teams and the live match are shared with every device that opens this page, and kept between sessions.':LIB.mode==='loading'?'Connecting to your saved players...':'Players and teams are saved in this browser only.')+'</p>';
@@ -2012,7 +2040,7 @@ function resetToss(){ui.setup.coin={state:'idle',result:''};ui.setup.winner='';u
 function actLib(a,d){
   switch(a){
     case 'screen':ui.screen=d.v;ui.top=true;return true;
-    case 'tp-add':case 'tp-del':case 'tp-view':case 'auto-group':case 'auto-next':case 'tour-type':case 'tour-create':case 'tour-open':case 'tour-finish':case 'tour-reopen':case 'tour-back':case 'tour-del-arm':case 'tour-del':case 'tm-open':case 'tm-close':case 'tm-team-toggle':case 'tm-team-remove':case 'sched-rounds':case 'sched-gen':case 'sched-add':case 'fix-play':case 'fix-unlink':case 'fix-move':case 'fix-del':case 'fix-clear-arm':case 'fix-clear':return actTour(a,d)===true;
+    case 'tp-add':case 'tp-team':case 'tp-del':case 'tp-view':case 'auto-group':case 'auto-next':case 'tour-type':case 'tour-create':case 'tour-open':case 'tour-finish':case 'tour-reopen':case 'tour-back':case 'tour-del-arm':case 'tour-del':case 'tm-open':case 'tm-close':case 'tm-team-toggle':case 'tm-team-remove':case 'sched-rounds':case 'sched-gen':case 'sched-add':case 'fix-play':case 'fix-unlink':case 'fix-move':case 'fix-del':case 'fix-clear-arm':case 'fix-clear':return actTour(a,d)===true;
     case 'preset':ui.setup.overs=String(d.v);ui.setup.fmt=d.v==='20'?'T20':d.v==='50'?'ODI':'Custom';return true;
     case 'format':{const s=ui.setup;if(s.fixture) return false;s.fmt=d.v;s.maxper='';if(d.v==='T20'||d.v==='IPL') s.overs='20';else if(d.v==='ODI') s.overs='50';else if(d.v==='Custom') s.overs='';return true;}
     case 'resume-pending':{
