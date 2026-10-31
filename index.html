@@ -443,6 +443,7 @@ function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'
 const HISTKEY='cricketscorer.hist.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
 const SYNC_URL='';
+const BUILD='2026-10-31c';
 let HIST=[];const SYNC={url:SYNC_URL,status:'',sheet:'',state:'idle',last:null,hide:null,ready:true};
 const STATEKEY='cricketscorer.stateat.v1';
 let STATEAT='';try{STATEAT=localStorage.getItem(STATEKEY)||'';}catch(e){}
@@ -553,9 +554,9 @@ function libDelAllTeams(){
 }
 function removeAllHtml(kind){
   const n=kind==='p'?LIB.players.length:LIB.teams.length;
-  if(!n) return '';
+  if(!n) return '<div class="actions" style="padding:0 14px 8px;margin-top:0"><button class="btn danger" disabled>Remove all '+(kind==='p'?'players':'teams')+'</button></div>';
   const word=kind==='p'?'player':'team',armed=ui.armed==='all'+kind;
-  return '<div class="actions" style="padding:10px 14px 14px;margin-top:0">'+
+  return '<div class="actions" style="padding:0 14px 8px;margin-top:0">'+
     (armed?'<span class="note" style="margin:0;align-self:center">Remove all '+plural(n,word)+'? This cannot be undone.</span><button class="btn danger armed" data-act="del-all-'+(kind==='p'?'players':'teams')+'">Yes, remove all</button><button class="btn" data-act="del-all-cancel">Cancel</button>'
       :'<button class="btn danger" data-act="del-all-'+(kind==='p'?'players':'teams')+'-arm">Remove all '+word+'s</button>')+'</div>';
 }
@@ -777,7 +778,7 @@ function setSync(st){
   SYNC.state=st;clearTimeout(SYNC.hide);
   paintSync();
 }
-function paintSync(){const el=document.getElementById('syncind');if(el) el.outerHTML=syncIndHtml();}
+function paintSync(){const el=document.getElementById('syncind');if(el) el.outerHTML=syncIndHtml();paintWarn();}
 function syncSoon(){
   if(!SYNC.url||SYNC.ready===false) return;
   const b=buildSync();
@@ -829,7 +830,7 @@ function importLib(){
   u.searchParams.set('action','lib');u.searchParams.set('_',String(Date.now()));
   let ctl=null,t=null;
   try{ctl=new AbortController();t=setTimeout(()=>ctl.abort(),9000);}catch(e){}
-  return Promise.resolve().then(()=>fetch(u.href,{credentials:'omit',redirect:'follow',cache:'no-store',signal:ctl?ctl.signal:undefined})).then(r=>r.json())
+  return Promise.resolve().then(()=>fetch(u.href,{credentials:'omit',redirect:'follow',signal:ctl?ctl.signal:undefined})).then(r=>r.json())
     .then(d=>{clearTimeout(t);const n=mergeSheetLib(d);if(n&&!M) render();return n;})
     .catch(()=>{clearTimeout(t);return 0;});
 }
@@ -926,8 +927,24 @@ function sheetStatus(action){
   u.searchParams.set('action',action||'status');u.searchParams.set('_',String(Date.now()));
   let ctl=null,t=null;
   try{ctl=new AbortController();t=setTimeout(()=>ctl.abort(),12000);}catch(e){}
-  return Promise.resolve().then(()=>fetch(u.href,{credentials:'omit',redirect:'follow',cache:'no-store',signal:ctl?ctl.signal:undefined})).then(r=>r.json()).then(d=>{clearTimeout(t);return d;}).catch(()=>{clearTimeout(t);return null;});
+  return Promise.resolve().then(()=>fetch(u.href,{credentials:'omit',redirect:'follow',signal:ctl?ctl.signal:undefined})).then(r=>r.json()).then(d=>{clearTimeout(t);noteReply(d);return d;}).catch(()=>{clearTimeout(t);noteReply(null);return null;});
 }
+/* Notes whether the Google script answered, and whether it is the current version, so a setup problem shows on screen instead of failing quietly. */
+function noteReply(d){
+  const was=SYNC.noreply+'|'+SYNC.old;
+  if(d&&typeof d==='object'&&d.ok!==undefined){SYNC.noreply=false;SYNC.old=(d.v!==BUILD);}
+  else SYNC.noreply=true;
+  if(was!==SYNC.noreply+'|'+SYNC.old) paintWarn();
+}
+function syncWarnHtml(){
+  if(!SYNC.url) return '';
+  let m='';
+  if(SYNC.noreply) m='This device cannot read answers from your Sync URL, so data will not share between devices. In Apps Script choose Deploy &gt; Manage deployments &gt; Edit, set Execute as: Me and Who has access: Anyone, pick Version: New version, then Deploy. Check that the URL ends in /exec.';
+  else if(SYNC.old) m='Your Google Apps Script is an older version than this app, so data may not share or remove properly. Paste the latest Code.gs into Apps Script, then choose Deploy &gt; Manage deployments &gt; Edit &gt; Version: New version &gt; Deploy.';
+  else if(SYNC.state==='fail') m='Sync problem: '+esc(SYNC.status||'could not reach the spreadsheet script.');
+  return '<div id="syncwarn">'+(m?'<section class="panel pad nosync" role="alert"><h3>Sync needs attention</h3><p class="note" style="margin:0">'+m+'</p></section>':'')+'</div>';
+}
+function paintWarn(){const el=document.getElementById('syncwarn');if(el) el.outerHTML=syncWarnHtml();}
 function verifySent(b,tries){
   return sheetStatus('check').then(st=>{
     if(!st||typeof st!=='object') return {r:'unreadable'};
@@ -1016,7 +1033,7 @@ function menuHtml(){
 function histSorted(){return HIST.slice().sort((a,b)=>cmpS(String(b.at||''),String(a.at||''))||cmpS(String(b.id),String(a.id)));}
 function histCardHtml(){
   const r=HIST.find(x=>x.id===ui.histId);
-  const head='<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div>'+
+  const head='<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun &middot; v'+BUILD+'</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div>'+
     '<div class="actions" style="margin-top:0"><button class="btn small" data-act="hist-back">&larr; '+(ui.histFrom==='tours'?'Results':ui.histFrom==='close'?'Back':'Match history')+'</button></div>';
   if(!r) return head+'<section class="panel pad"><p class="muted">That match is no longer saved.</p></section></div>';
   const d=fmtDate(r.at);
@@ -1059,7 +1076,7 @@ function resultsHtml(){
   const reg=histSorted().filter(r=>!r.tn&&r.result);
   const tourPart=(rf!=='reg')?('<h2 class="catlabel">Tournament match</h2>'+(blocks||'<section class="panel pad"><p class="muted">No tournament series results yet.</p></section>')):'';
   const regPart=(rf!=='tour')?('<h2 class="catlabel">Regular match</h2>'+(reg.length?reg.map(regularResultHtml).join(''):'<section class="panel pad"><p class="muted">No regular match results yet.</p></section>')):'';
-  return '<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div>'+
+  return '<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun &middot; v'+BUILD+'</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div>'+
     '<div class="actions" style="margin-top:0"><button class="btn small" data-act="hist-close">&larr; Back</button></div>'+
     '<section class="panel pad"><h1>Results</h1><p class="note">Results sorted into tournament matches and regular matches, with the date of each match. Tournament series show the score between the two teams and the result of every match in it. Every scorecard is also in Match history.</p>'+catBtns('res-filter',rf)+'</section>'+
     tourPart+regPart+'</div>';
@@ -1078,7 +1095,7 @@ function histHtml(){
       '<div class="note">'+esc(r.toss)+'</div>'+
       '<div class="actions" style="margin-top:6px"><button class="btn small primary" data-act="hist-view" data-id="'+esc(r.id)+'">Full scorecard</button><button class="btn small'+(armed?' armed':' danger')+'" data-act="'+(armed?'hist-del':'hist-del-arm')+'" data-id="'+esc(r.id)+'">'+(armed?'Tap again to delete':'Delete')+'</button></div></div>';
   }).join(''):'<p class="muted">'+(HIST.length?'No '+(hf==='tour'?'tournament':'regular')+' matches yet.':'No matches yet. A match is saved here as soon as it has a result.')+'</p>';
-  return '<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div>'+
+  return '<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun &middot; v'+BUILD+'</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div>'+
     '<div class="actions" style="margin-top:0"><button class="btn small" data-act="hist-close">&larr; Back</button></div>'+
     '<section class="panel pad"><h1>Match history</h1>'+catBtns('hist-filter',ui.histFilter||'all')+(LIB.mode==='db'?'<p class="note">Saved with this app and kept between sessions.</p>':'<p class="note">'+(SYNC.url?'Saved in this browser and shared through the spreadsheet.':'Saved in this browser only.')+'</p>')+items+'</section>'+
     '<section class="panel pad" id="syncpanel"><h3>Spreadsheet sync</h3>'+
@@ -1822,7 +1839,7 @@ function actTour(a,d){
 /* ---------- setup / squads screens ---------- */
 function topNav(){
   const t=[['setup','New match'],['squads','Players & teams'],['tours','Tournaments']].map(x=>'<button class="tab" role="tab" aria-selected="'+(ui.screen===x[0])+'" data-act="screen" data-v="'+x[0]+'">'+esc(x[1])+'</button>').join('');
-  return '<div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div><div class="tabs three" role="tablist">'+t+'</div>'+pendingHtml();
+  return '<div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun &middot; v'+BUILD+'</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div><div class="tabs three" role="tablist">'+t+'</div>'+syncWarnHtml()+pendingHtml();
 }
 function storeNote(){
   return '<p class="note">'+(LIB.mode==='db'?'Players, teams and the live match are shared with every device that opens this page, and kept between sessions.':LIB.mode==='loading'?'Connecting to your saved players...':(SYNC.url?'Players and teams are saved in this browser and shared through the spreadsheet.':'Players and teams are saved in this browser only.'))+'</p>';
@@ -1994,14 +2011,14 @@ function squadsHtml(){
       '<button class="btn small'+(armed?' armed':' danger')+'" data-act="'+(armed?'del-team':'del-team-arm')+'" data-id="'+esc(t.id)+'">'+(armed?'Confirm remove':'Remove')+'</button></div></div>';
   }).join('');
   const ed=ui.squads.editor;
-  return '<div class="wrap">'+topNav()+'<div class="cols"><div>'+findPlayerHtml()+
+  return '<div class="wrap">'+topNav()+'<section class="panel" id="bulkremove"><h3>Remove all</h3>'+removeAllHtml('p')+removeAllHtml('t')+'</section><div class="cols"><div>'+findPlayerHtml()+
     '<section class="panel"><h3>Players <em>'+LIB.players.length+' saved</em></h3>'+
       '<div style="padding:0 14px 12px">'+storeNote()+'<div class="addrow"><input id="np-lib" data-k="lib" data-f="newp" value="'+esc(ui.squads.newp)+'" maxlength="40" autocomplete="off" placeholder="New player name" aria-label="New player name"><button class="btn small primary" data-act="add-player" data-k="lib">Add player</button></div></div>'+
       (rows||'<div class="empty">No players saved yet. Add your first player above. They will be there to pick whenever you start a match.</div>')+
-    removeAllHtml('p')+'</section></div><div>'+
+    '</section></div><div>'+
     '<section class="panel pad"><h3>'+(ed.teamId?'Edit team':'Create a team')+'</h3>'+pickerHtml('e')+
       '<div class="actions"><button class="btn primary" data-act="save-team" data-k="e">Save team</button><button class="btn" data-act="clear-editor">Start a new team</button></div></section>'+
-    '<section class="panel"><h3>Saved teams <em>'+LIB.teams.length+'</em></h3>'+(teams||'<div class="empty">No teams saved yet.</div>')+removeAllHtml('t')+'</section>'+
+    '<section class="panel"><h3>Saved teams <em>'+LIB.teams.length+'</em></h3>'+(teams||'<div class="empty">No teams saved yet.</div>')+'</section>'+
     '</div></div></div>';
 }
 function startMatch(){
@@ -2131,7 +2148,7 @@ function renderMatch(){
   else body=scoreTab(A);
   const tabs=[['score','Score'],['card','Scorecard'],['overs','Overs'],['match','Match']].map(t=>
     '<button class="tab" role="tab" aria-selected="'+(ui.tab===t[0])+'" data-act="tab" data-v="'+t[0]+'">'+t[1]+'</button>').join('');
-  return '<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+'<div class="vs">'+esc(M.teams[0].name)+' v '+esc(M.teams[1].name)+'</div>'+menuHtml()+'</div></div>'+
+  return '<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun &middot; v'+BUILD+'</span></div><div class="topr">'+syncIndHtml()+'<div class="vs">'+esc(M.teams[0].name)+' v '+esc(M.teams[1].name)+'</div>'+menuHtml()+'</div></div>'+
     '<div class="tabs" role="tablist">'+tabs+'</div>'+body+'</div>'+(ui.wk?wicketModal(A):'')+(ui.sub?subModal(A):'');
 }
 

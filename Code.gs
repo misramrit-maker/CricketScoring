@@ -750,7 +750,9 @@ function pad_(row, width) {
   return r;
 }
 
+var CODE_VERSION = '2026-10-31c';
 function out_(obj) {
+  if (obj && typeof obj === 'object') obj.v = CODE_VERSION;
   return ContentService
     .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
