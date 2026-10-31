@@ -532,6 +532,33 @@ function libDelPlayer(id){
   persistLib();syncSoon();
   remote(db=>db.doc('players/'+id).delete());
 }
+/* Remove every saved player, or every saved team, in one go. Each one gets a removal marker, so every other device drops it too. */
+function libDelAllPlayers(){
+  const ids=LIB.players.map(p=>p.id);
+  ids.forEach(id=>tomb('p:'+id));
+  LIB.players=[];
+  LIB.teams.forEach(t=>{if(t.playerIds.length||t.capId||t.wkId){t.u=nowIso();t.playerIds=[];t.capId='';t.wkId='';}});
+  if(ui.squads&&ui.squads.editor){ui.squads.editor.sel=[];ui.squads.editor.cap='';ui.squads.editor.wk='';}
+  if(ui.setup&&ui.setup.slots) ui.setup.slots.forEach(sl=>{sl.sel=[];sl.cap='';sl.wk='';});
+  persistLib();syncSoon();
+  return ids.length;
+}
+function libDelAllTeams(){
+  const ids=LIB.teams.map(t=>t.id);
+  ids.forEach(id=>tomb('t:'+id));
+  LIB.teams=[];
+  if(ui.squads) ui.squads.editor={teamId:'',name:'',sel:[],newp:''};
+  persistLib();syncSoon();
+  return ids.length;
+}
+function removeAllHtml(kind){
+  const n=kind==='p'?LIB.players.length:LIB.teams.length;
+  if(!n) return '';
+  const word=kind==='p'?'player':'team',armed=ui.armed==='all'+kind;
+  return '<div class="actions" style="padding:10px 14px 14px;margin-top:0">'+
+    (armed?'<span class="note" style="margin:0;align-self:center">Remove all '+plural(n,word)+'? This cannot be undone.</span><button class="btn danger armed" data-act="del-all-'+(kind==='p'?'players':'teams')+'">Yes, remove all</button><button class="btn" data-act="del-all-cancel">Cancel</button>'
+      :'<button class="btn danger" data-act="del-all-'+(kind==='p'?'players':'teams')+'-arm">Remove all '+word+'s</button>')+'</div>';
+}
 function uniq(a){return a.filter((x,i)=>a.indexOf(x)===i);}
 function libPutTeam(id,name,playerIds,capId,wkId){
   capId=capId||'';wkId=wkId||'';playerIds=uniq(playerIds);
@@ -799,10 +826,10 @@ function mergeSheetLib(d){
 function importLib(){
   if(!SYNC.url) return Promise.resolve(0);
   let u;try{u=new URL(SYNC.url);if(u.protocol!=='https:'&&u.protocol!=='http:') throw 0;}catch(e){return Promise.resolve(0);}
-  u.searchParams.set('action','lib');
+  u.searchParams.set('action','lib');u.searchParams.set('_',String(Date.now()));
   let ctl=null,t=null;
   try{ctl=new AbortController();t=setTimeout(()=>ctl.abort(),9000);}catch(e){}
-  return Promise.resolve().then(()=>fetch(u.href,{credentials:'omit',redirect:'follow',signal:ctl?ctl.signal:undefined})).then(r=>r.json())
+  return Promise.resolve().then(()=>fetch(u.href,{credentials:'omit',redirect:'follow',cache:'no-store',signal:ctl?ctl.signal:undefined})).then(r=>r.json())
     .then(d=>{clearTimeout(t);const n=mergeSheetLib(d);if(n&&!M) render();return n;})
     .catch(()=>{clearTimeout(t);return 0;});
 }
@@ -896,10 +923,10 @@ function syncBoth(){
 }
 function sheetStatus(action){
   let u;try{u=new URL(SYNC.url);}catch(e){return Promise.resolve(null);}
-  u.searchParams.set('action',action||'status');
+  u.searchParams.set('action',action||'status');u.searchParams.set('_',String(Date.now()));
   let ctl=null,t=null;
   try{ctl=new AbortController();t=setTimeout(()=>ctl.abort(),12000);}catch(e){}
-  return Promise.resolve().then(()=>fetch(u.href,{credentials:'omit',redirect:'follow',signal:ctl?ctl.signal:undefined})).then(r=>r.json()).then(d=>{clearTimeout(t);return d;}).catch(()=>{clearTimeout(t);return null;});
+  return Promise.resolve().then(()=>fetch(u.href,{credentials:'omit',redirect:'follow',cache:'no-store',signal:ctl?ctl.signal:undefined})).then(r=>r.json()).then(d=>{clearTimeout(t);return d;}).catch(()=>{clearTimeout(t);return null;});
 }
 function verifySent(b,tries){
   return sheetStatus('check').then(st=>{
@@ -1971,10 +1998,10 @@ function squadsHtml(){
     '<section class="panel"><h3>Players <em>'+LIB.players.length+' saved</em></h3>'+
       '<div style="padding:0 14px 12px">'+storeNote()+'<div class="addrow"><input id="np-lib" data-k="lib" data-f="newp" value="'+esc(ui.squads.newp)+'" maxlength="40" autocomplete="off" placeholder="New player name" aria-label="New player name"><button class="btn small primary" data-act="add-player" data-k="lib">Add player</button></div></div>'+
       (rows||'<div class="empty">No players saved yet. Add your first player above. They will be there to pick whenever you start a match.</div>')+
-    '</section></div><div>'+
+    removeAllHtml('p')+'</section></div><div>'+
     '<section class="panel pad"><h3>'+(ed.teamId?'Edit team':'Create a team')+'</h3>'+pickerHtml('e')+
       '<div class="actions"><button class="btn primary" data-act="save-team" data-k="e">Save team</button><button class="btn" data-act="clear-editor">Start a new team</button></div></section>'+
-    '<section class="panel"><h3>Saved teams <em>'+LIB.teams.length+'</em></h3>'+(teams||'<div class="empty">No teams saved yet.</div>')+'</section>'+
+    '<section class="panel"><h3>Saved teams <em>'+LIB.teams.length+'</em></h3>'+(teams||'<div class="empty">No teams saved yet.</div>')+removeAllHtml('t')+'</section>'+
     '</div></div></div>';
 }
 function startMatch(){
@@ -2054,6 +2081,11 @@ function actLib(a,d){
     case 'save-team':saveTeam(d.k,false);return true;
     case 'clear-editor':ui.squads.editor={teamId:'',name:'',sel:[],newp:''};ui.focus='tn-e';return true;
     case 'edit-team':{const t=LIB.teams.find(x=>x.id===d.id);if(t){ui.squads.editor={teamId:t.id,name:t.name,sel:t.playerIds.filter(i=>libName(i)!=null),newp:'',cap:t.capId||'',wk:t.wkId||''};ui.focus='tn-e';}return true;}
+    case 'del-all-players-arm':ui.armed='allp';return true;
+    case 'del-all-teams-arm':ui.armed='allt';return true;
+    case 'del-all-cancel':ui.armed=null;return true;
+    case 'del-all-players':{const n=libDelAllPlayers();ui.armed=null;toast(n?'All '+plural(n,'player')+' removed':'No players to remove');return true;}
+    case 'del-all-teams':{const n=libDelAllTeams();ui.armed=null;toast(n?'All '+plural(n,'team')+' removed':'No teams to remove');return true;}
     case 'del-player-arm':ui.armed='dp'+d.id;return true;
     case 'del-player':libDelPlayer(d.id);return true;
     case 'del-team-arm':ui.armed='dt'+d.id;return true;
@@ -2448,7 +2480,7 @@ function pushBall(k,r,w){
   cur().events.push({t:'ball',k:k,r:r,w:w||null});
 }
 function act(a,d){
-  if(['end-arm','pend-arm','new-arm','draw-arm','del-player-arm','del-team-arm','hist-del-arm','hist-del','menu'].indexOf(a)<0) ui.armed=null;
+  if(['end-arm','pend-arm','new-arm','draw-arm','del-player-arm','del-team-arm','del-all-players-arm','del-all-teams-arm','hist-del-arm','hist-del','menu'].indexOf(a)<0) ui.armed=null;
   if(a!=='copy') ui.copyText=null;
   if(histAct(a,d)) return;
   if(!M){
