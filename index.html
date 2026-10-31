@@ -251,7 +251,7 @@ h1{font-family:var(--font-display);font-size:34px;line-height:1.05;margin:0 0 6p
 .impactgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:10px;margin-top:10px}
 .impact{border:1px solid var(--line);border-radius:10px;background:var(--surface2);padding:12px}
 .impact p{margin:4px 0}
-.stephead{display:flex;align-items:baseline;gap:10px}
+.stephead,.panel h3.stephead,.resumebar h3{display:flex;align-items:baseline;justify-content:flex-start;gap:10px}
 .stephead b{font-family:var(--font-data);font-weight:500;color:var(--accent)}
 @media (hover:hover){
   .btn:hover:not([disabled]),.opt:hover:not([disabled]),.mode:hover,.key:hover:not([disabled]),.pick:hover:not([disabled]),.tick:hover:not(.off),.tab:hover{filter:brightness(.96)}
@@ -743,7 +743,7 @@ function buildSync(){
 }
 function syncIndHtml(){
   const st=SYNC.state;
-  const txt=st==='syncing'?'Syncing to Sheets':st==='done'?'Synced to Sheets':st==='fail'?'Sync failed':'';
+  const txt=!SYNC.url?'':st==='syncing'?'Syncing to Sheets':st==='done'?'Synced to Sheets':st==='fail'?'Sync failed':'';
   return '<span id="syncind" class="syncind '+(txt?st:'')+'" role="status" aria-live="polite">'+(txt?'<span class="spin" aria-hidden="true"></span>'+txt:'')+'</span>';
 }
 function setSync(st){
@@ -1053,7 +1053,7 @@ function histHtml(){
   }).join(''):'<p class="muted">'+(HIST.length?'No '+(hf==='tour'?'tournament':'regular')+' matches yet.':'No matches yet. A match is saved here as soon as it has a result.')+'</p>';
   return '<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div>'+
     '<div class="actions" style="margin-top:0"><button class="btn small" data-act="hist-close">&larr; Back</button></div>'+
-    '<section class="panel pad"><h1>Match history</h1>'+catBtns('hist-filter',ui.histFilter||'all')+(LIB.mode==='db'?'<p class="note">Saved with this app and kept between sessions.</p>':'<p class="note">Saved in this browser only.</p>')+items+'</section>'+
+    '<section class="panel pad"><h1>Match history</h1>'+catBtns('hist-filter',ui.histFilter||'all')+(LIB.mode==='db'?'<p class="note">Saved with this app and kept between sessions.</p>':'<p class="note">'+(SYNC.url?'Saved in this browser and shared through the spreadsheet.':'Saved in this browser only.')+'</p>')+items+'</section>'+
     '<section class="panel pad" id="syncpanel"><h3>Spreadsheet sync</h3>'+
     '<p class="note">All your data (players, teams, matches and the live ball-by-ball) is sent to the spreadsheet whenever anything changes.'+(SYNC.url?'':' Spreadsheet sync is off: add the Sync URL to the index.html file to switch it on.')+' Players and teams you change in the sheet are loaded back into the app within a few seconds.'+(SYNC.status?' <b>'+esc(SYNC.status)+'</b>':'')+'</p>'+
     '<div class="actions"><button class="btn" data-act="sync-all"'+(SYNC.url?'':' disabled')+'>Send everything now</button><button class="btn" data-act="sync-pull"'+(SYNC.url?'':' disabled')+'>Sync both ways now</button><button class="btn" data-act="sync-test"'+(SYNC.url?'':' disabled')+'>Check connection and add headings</button></div>'+
@@ -1798,7 +1798,7 @@ function topNav(){
   return '<div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div><div class="tabs three" role="tablist">'+t+'</div>'+pendingHtml();
 }
 function storeNote(){
-  return '<p class="note">'+(LIB.mode==='db'?'Players, teams and the live match are shared with every device that opens this page, and kept between sessions.':LIB.mode==='loading'?'Connecting to your saved players...':'Players and teams are saved in this browser only.')+'</p>';
+  return '<p class="note">'+(LIB.mode==='db'?'Players, teams and the live match are shared with every device that opens this page, and kept between sessions.':LIB.mode==='loading'?'Connecting to your saved players...':(SYNC.url?'Players and teams are saved in this browser and shared through the spreadsheet.':'Players and teams are saved in this browser only.'))+'</p>';
 }
 /* The toss is a bat with two sides. Internally 'heads' is Mountains and 'tails' is Rivers, which keeps older saved matches working. */
 function sideName(v){return v==='tails'||v==='rivers'?'Rivers':'Mountains';}
