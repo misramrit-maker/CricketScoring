@@ -16,7 +16,7 @@
 .livedot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--wicket);margin-right:8px;animation:livepulse 1.4s ease-in-out infinite}
 @keyframes livepulse{0%,100%{opacity:1}50%{opacity:.25}}
 @media (prefers-reduced-motion:reduce){.livedot{animation:none}}
-#teameditor{scroll-margin-top:64px}
+#teameditor,#savedteams{scroll-margin-top:64px}
 </style>
 <style>
 /* Layout: scorebook column on phones; on tablets the scoring screen splits into board and crease on the left, keypad on the right. Players and teams are saved and picked from lists. */
@@ -443,7 +443,7 @@ let DB=null,pendingOps=[],chain=Promise.resolve();
 function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'base'});}
 const HISTKEY='cricketscorer.hist.v1',SYNCKEY='cricketscorer.sync.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
-const SYNC_URL='https://script.google.com/macros/s/AKfycbwTnVT72XUsoiGzYZHtBrGp5dusmTMRDJLOcDKugzeYtjn1D5_t-bmVK0_q3hjmf44FAg/exec';
+const SYNC_URL='https://script.google.com/macros/s/AKfycbyuK1gwQLFNc4wjSm9z8UeX9nIY9YxFgT54d1JDB9OgM2kzNOTgiBVhxSEoSCSbScWaNw/exec';
 /* The address is taken from the line above (spaces and quotes are ignored). If that line is empty, the first Google Apps Script web app address found anywhere in this file is used, so it still works if it was pasted a line too high or low. */
 const SYNC_ADDR=(function(){
   let u=String(SYNC_URL||'').replace(/^[\s'"]+|[\s'"]+$/g,'');
@@ -2083,14 +2083,14 @@ function squadsHtml(){
       '<button class="btn small'+(armed?' armed':' danger')+'" data-act="'+(armed?'del-team':'del-team-arm')+'" data-id="'+esc(t.id)+'">'+(armed?'Confirm remove':'Remove')+'</button></div></div>';
   }).join('');
   const ed=ui.squads.editor;
-  return '<div class="wrap">'+topNav()+'<section class="panel" id="bulkremove"><h3>Remove all</h3>'+removeAllHtml('p')+removeAllHtml('t')+'</section><div class="cols"><div>'+findPlayerHtml()+
+  return '<div class="wrap">'+topNav()+'<div class="actions" style="margin-top:12px"><button class="btn primary" data-act="view-teams">View teams</button></div><section class="panel" id="bulkremove"><h3>Remove all</h3>'+removeAllHtml('p')+removeAllHtml('t')+'</section><div class="cols"><div>'+findPlayerHtml()+
     '<section class="panel"><h3>Players <em>'+LIB.players.length+' saved</em></h3>'+
       '<div style="padding:0 14px 12px">'+storeNote()+'<div class="addrow"><input id="np-lib" data-k="lib" data-f="newp" value="'+esc(ui.squads.newp)+'" maxlength="40" autocomplete="off" placeholder="New player name" aria-label="New player name"><button class="btn small primary" data-act="add-player" data-k="lib">Add player</button></div></div>'+
       (rows||'<div class="empty">No players saved yet. Add your first player above. They will be there to pick whenever you start a match.</div>')+
     '</section></div><div>'+
     '<section class="panel pad" id="teameditor"><h3>'+(ed.teamId?'Edit team':'Create a team')+'</h3>'+pickerHtml('e')+
       '<div class="actions"><button class="btn primary" data-act="save-team" data-k="e">Save team</button><button class="btn" data-act="clear-editor">Start a new team</button></div></section>'+
-    '<section class="panel"><h3>Saved teams <em>'+LIB.teams.length+'</em></h3>'+(teams||'<div class="empty">No teams saved yet.</div>')+'</section>'+
+    '<section class="panel" id="savedteams"><h3>Saved teams <em>'+LIB.teams.length+'</em></h3>'+(teams||'<div class="empty">No teams saved yet.</div>')+'</section>'+
     '</div></div></div>';
 }
 function startMatch(){
@@ -2168,8 +2168,9 @@ function actLib(a,d){
       const pc=$('pcount');if(pc) pc.textContent=p.sel.length+' of '+maxSel(d.k)+(iplSquad(d.k)?' needed':' selected')+(p.sel.length>=maxSel(d.k)?' (full)':'');
       return false;}
     case 'save-team':saveTeam(d.k,false);releaseHold();return true;
+    case 'view-teams':ui.scrollId='savedteams';return true;
     case 'clear-editor':releaseHold();ui.squads.editor={teamId:'',name:'',sel:[],newp:''};ui.focus='tn-e';ui.scrollId='teameditor';return true;
-    case 'edit-team':{const t=LIB.teams.find(x=>x.id===d.id);if(t){ui.squads.editor={teamId:t.id,name:t.name,sel:t.playerIds.filter(i=>libName(i)!=null),newp:'',cap:t.capId||'',wk:t.wkId||''};ui.focus='tn-e';}return true;}
+    case 'edit-team':{const t=LIB.teams.find(x=>x.id===d.id);if(t){ui.squads.editor={teamId:t.id,name:t.name,sel:t.playerIds.filter(i=>libName(i)!=null),newp:'',cap:t.capId||'',wk:t.wkId||''};ui.focus='tn-e';ui.scrollId='teameditor';}return true;}
     case 'del-all-players-arm':ui.armed='allp';return true;
     case 'del-all-teams-arm':ui.armed='allt';return true;
     case 'del-all-cancel':ui.armed=null;return true;
