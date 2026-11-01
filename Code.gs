@@ -325,7 +325,7 @@ function absorbDiff_(stored, base, cur, now) {
   };
 }
 /* ---- Tournaments: rebuilt from the Tournaments, Tournament teams, People, Fixtures and Activity tabs when the app does not have them ---- */
-var STAGE_KEY_ = { 'Group stage': 'group', 'Quarter-finals': 'qf', 'Semi-finals': 'sf', 'Final': 'final' };
+var STAGE_KEY_ = { 'Group stage': 'group', 'Quarter-finals': 'qf', 'Semi-finals': 'sf', 'Qualifier 1 and Eliminator': 'po', 'Qualifier 2': 'q2', 'Final': 'final' };
 function tourTypeOf_(label) {
   var s = String(label || '');
   if (/IPL/i.test(s)) return 'IPL';
@@ -755,7 +755,7 @@ function pad_(row, width) {
   return r;
 }
 
-var CODE_VERSION = '2026-10-31c';
+var CODE_VERSION = '2026-11-01';
 function out_(obj) {
   if (obj && typeof obj === 'object') obj.v = CODE_VERSION;
   return ContentService

@@ -443,7 +443,7 @@ function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'
 const HISTKEY='cricketscorer.hist.v1',SYNCKEY='cricketscorer.sync.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
 const SYNC_URL='';
-const BUILD='2026-10-31c';
+const BUILD='2026-11-01';
 let HIST=[];const SYNC={url:SYNC_URL,status:'',sheet:'',state:'idle',last:null,hide:null,ready:true};
 const STATEKEY='cricketscorer.stateat.v1';
 let STATEAT='';try{STATEAT=localStorage.getItem(STATEKEY)||'';}catch(e){}
@@ -696,7 +696,7 @@ function syncCards(){
   return o;
 }
 function curStageName(T){
-  const order=['group','qf','sf','final'];let last='';
+  const order=['group','qf','sf','po','q2','final'];let last='';
   order.forEach(k=>{if(T.fixtures.some(f=>f.stage===k)) last=STAGE_NAME[k];});
   return last||(T.fixtures.length?'Manual fixtures':'Not started');
 }
@@ -1415,9 +1415,9 @@ function catBtns(act,cur){return '<div class="seg" style="margin-top:8px">'+CATS
 function catOk(r,f){return f==='tour'?!!r.tn:f==='reg'?!r.tn:true;}
 function autoMode(T){return T.fixtures.some(f=>f.stage);}
 function tourFinished(T){return T.finished===true||(autoMode(T)?T.fixtures.some(f=>f.stage==='final'&&f.done):(T.fixtures.length>0&&T.fixtures.every(f=>f.done)));}
-/* ---- people: up to 3 people play as the teams. Each match is a win for the person who played as the winning team. ---- */
-const PMAX=3;
-const STAGE_NAME={group:'Group stage',qf:'Quarter-finals',sf:'Semi-finals',final:'Final'};
+/* ---- people: up to 8 people play as the teams. Each match is a win for the person who played as the winning team. ---- */
+const PMAX=8;
+const STAGE_NAME={group:'Group stage',qf:'Quarter-finals',sf:'Semi-finals',po:'Qualifier 1 and Eliminator',q2:'Qualifier 2',final:'Final'};
 function peopleMode(T){return (T.people||[]).length>=2;}
 function pName(T,id){const q=(T.people||[]).find(x=>x.id===id);return q?q.name:'';}
 function ownerOf(T,id){return (T.owner||{})[id]||'';}
@@ -1447,30 +1447,49 @@ function rankTeams(T,stage){
 }
 /* A tie or draw sends the higher seed through. */
 function winnerTeam(f){return f.result&&f.result.win==='b'?f.b:f.a;}
+/* Pairs every team with every other team, arranged in rounds (circle method). */
+function roundRobin(ids){
+  const t=ids.slice();if(t.length%2) t.push(null);
+  const n=t.length,out=[];
+  for(let r=0;r<n-1;r++){
+    for(let i=0;i<n/2;i++){const a=t[i],b=t[n-1-i];if(a&&b) out.push(r%2?[b,a]:[a,b]);}
+    t.splice(1,0,t.pop());
+  }
+  return out;
+}
 function mkFix(T,a,b,label,stage,slot){
   const pa=ownerOf(T,a),pb=ownerOf(T,b);
   return {id:newId('f'),a:a,b:b,label:label,stage:stage,slot:slot,pa:pa,pb:pb===pa?'':pb,done:false,result:null};
 }
 /* Works out the next stage once every match in the last one is played: 8 or more teams go to quarter-finals, 4 to 7 to semi-finals, fewer straight to the final. */
 function nextStage(T){
-  const order=['group','qf','sf','final'];let last=null;
+  const order=['group','qf','sf','po','q2','final'];let last=null;
   order.forEach(k=>{if(T.fixtures.some(f=>f.stage===k)) last=k;});
   if(!last||last==='final') return null;
   const cur=T.fixtures.filter(f=>f.stage===last).sort((a,b)=>(a.slot||0)-(b.slot||0));
   if(!cur.every(f=>f.done&&f.result)) return {wait:true,from:last};
   const rk=rankTeams(T,'group'),n=T.teams.length;
-  let key,pairs=[];
+  let key,pairs=[],labels=null;
+  const ipl=T.type==='IPL';
+  const loserTeam=f=>winnerTeam(f)===f.a?f.b:f.a;
   if(last==='group'){
-    if(n>=8){key='qf';pairs=[[0,7],[3,4],[1,6],[2,5]].map(q=>[rk[q[0]],rk[q[1]]]);}
+    if(ipl&&n>=4){key='po';pairs=[[rk[0],rk[1]],[rk[2],rk[3]]];labels=['Qualifier 1','Eliminator'];}
+    else if(n>=8){key='qf';pairs=[[0,7],[3,4],[1,6],[2,5]].map(q=>[rk[q[0]],rk[q[1]]]);}
     else if(n>=4){key='sf';pairs=[[0,3],[1,2]].map(q=>[rk[q[0]],rk[q[1]]]);}
     else{key='final';pairs=[[rk[0],rk[1]]];}
+  }else if(last==='po'){
+    /* IPL playoffs: the loser of Qualifier 1 gets a second chance against the winner of the Eliminator. */
+    key='q2';pairs=[[loserTeam(cur[0]),winnerTeam(cur[1])]];labels=['Qualifier 2'];
+  }else if(last==='q2'){
+    const po=T.fixtures.filter(f=>f.stage==='po').sort((a,b)=>(a.slot||0)-(b.slot||0));
+    key='final';pairs=[[winnerTeam(po[0]),winnerTeam(cur[0])]];labels=['Final'];
   }else{
     key=last==='qf'?'sf':'final';
     const w=cur.map(winnerTeam);
     for(let i=0;i+1<w.length;i+=2) pairs.push(rk.indexOf(w[i])<=rk.indexOf(w[i+1])?[w[i],w[i+1]]:[w[i+1],w[i]]);
   }
   if(!pairs.length) return null;
-  return {key:key,pairs:pairs,labels:pairs.map((q,i)=>key==='final'?'Final':(key==='qf'?'Quarter-final ':'Semi-final ')+(i+1))};
+  return {key:key,pairs:pairs,labels:labels||pairs.map((q,i)=>key==='final'?'Final':(key==='qf'?'Quarter-final ':'Semi-final ')+(i+1))};
 }
 function tourSummaryHtml(T){
   const pscore=peopleMode(T)?'<div class="line"><b>'+(tourFinished(T)&&autoMode(T)?'Result':'Score')+'</b> '+esc(tourScore(T))+'</div>':'';
@@ -1637,9 +1656,9 @@ function peopleHtml(T){
   }).join('');
   const full=(T.people||[]).length>=PMAX;
   return '<section class="panel"><h3>People <em>'+(T.people||[]).length+' of '+PMAX+'</em></h3>'+
-    '<p class="note" style="padding:0 14px">Add 2 or 3 people. Each one plays as one or more of the teams below. A match is a win for whoever plays as the winning team.</p>'+
+    '<p class="note" style="padding:0 14px">Add 2 or more people (up to '+PMAX+'). Each one plays as one or more of the teams, so choose their teams with the buttons under each name. A match is a win for whoever plays as the winning team.</p>'+
     (list||'<div class="empty">No people yet.</div>')+
-    '<div class="addrow" style="padding:10px 14px 14px"><input id="tpname" data-f="tpname" value="'+esc(ui.tpName||'')+'" maxlength="30" autocomplete="off" placeholder="'+(full?'3 people added':'Name, e.g. James')+'" aria-label="Person name"'+(full?' disabled':'')+'><button class="btn primary" data-act="tp-add"'+(full?' disabled':'')+'>Add person</button></div></section>';
+    '<div class="addrow" style="padding:10px 14px 14px"><input id="tpname" data-f="tpname" value="'+esc(ui.tpName||'')+'" maxlength="30" autocomplete="off" placeholder="'+(full?PMAX+' people added':'Name, e.g. James')+'" aria-label="Person name"'+(full?' disabled':'')+'><button class="btn primary" data-act="tp-add"'+(full?' disabled':'')+'>Add person</button></div></section>';
 }
 function tourResultsHtml(T){
   const wtc=T.type==='WTC',rows=tourTable(T),pairs=tourPairs(T);
@@ -1677,6 +1696,21 @@ function autoHtml(T){
   else if(nx) b='<button class="btn primary" data-act="auto-next">Create '+esc(STAGE_NAME[nx.key])+'</button><p class="note" style="margin:8px 0 0">Then choose who plays as each team in every match.</p>';
   return b?'<div style="padding:10px 14px 0">'+b+'</div>':'';
 }
+/* A short guide at the top of a tournament: the one thing to do next. */
+function tourNextHtml(T){
+  const ppl=(T.people||[]).length,unassigned=T.teams.filter(t=>!ownerOf(T,t.id)).length;
+  const hasGroup=T.fixtures.some(f=>f.stage==='group'),nx=nextStage(T);
+  let step='',btn='';
+  if(T.teams.length<2){step='<b>Step 1.</b> Add at least 2 teams.';btn='<button class="btn primary" data-act="tm-open" data-v="teams">Add teams</button>';}
+  else if(ppl<2) step='<b>Step 2.</b> Add 2 or more people in the People panel below, using their names.';
+  else if(unassigned) step='<b>Step 3.</b> Choose which teams each person plays as. Use the team buttons under each person in the People panel. '+plural(unassigned,'team')+' still have no one.';
+  else if(!hasGroup&&!T.fixtures.length){step='<b>Step 4.</b> Create the group stage. The app schedules every match and puts the right person on each side.';btn='<button class="btn primary" data-act="auto-group">Create group stage</button>';}
+  else if(hasGroup&&nx&&nx.wait) step='<b>Next.</b> Play every '+esc(STAGE_NAME[nx.from])+' match. The next stage is created after that.';
+  else if(hasGroup&&nx){step='<b>Next.</b> The '+esc(STAGE_NAME[nx.from])+' is finished. Create '+esc(STAGE_NAME[nx.key])+'.';btn='<button class="btn primary" data-act="auto-next">Create '+esc(STAGE_NAME[nx.key])+'</button>';}
+  else if(hasGroup&&tourFinished(T)) step='<b>The tournament is finished.</b>';
+  if(!step) return '';
+  return '<section class="panel pad"><h3>What to do next</h3><p class="note" style="margin:0 0 '+(btn?'10px':'0')+'">'+step+'</p>'+(btn?'<div class="actions" style="margin-top:0">'+btn+'</div>':'')+'</section>';
+}
 function tourDetailHtml(T){
   const done=T.fixtures.filter(f=>f.done).length,unplayed=T.fixtures.length-done;
   const used=id=>T.fixtures.some(f=>f.a===id||f.b===id);
@@ -1687,7 +1721,7 @@ function tourDetailHtml(T){
     '<section class="panel pad"><h1>'+esc(T.name)+'</h1><p class="muted" style="margin:0"><b>'+esc(TT[T.type])+'</b>. '+esc(tourDesc(T))+'</p>'+
       (peopleMode(T)?'<p class="big" style="margin:10px 0 2px">'+(tourFinished(T)&&autoMode(T)?'Result: ':'Score: ')+esc(tourScore(T))+'</p><p class="muted" style="margin:0">'+peopleScore(T).map(x=>esc(x.name)+' '+x.w).join(' &middot; ')+'</p>':'')+
       '<p class="note"><b>'+(tourFinished(T)?'Finished. It is listed under Results in the menu.':'In progress.')+'</b></p>'+
-      '<div class="actions">'+(T.finished===true?'<button class="btn small" data-act="tour-reopen">Reopen tournament</button>':(tourFinished(T)?'':'<button class="btn small" data-act="tour-finish">Mark as finished</button>'))+'</div></section>'+
+      '<div class="actions">'+(T.finished===true?'<button class="btn small" data-act="tour-reopen">Reopen tournament</button>':(tourFinished(T)?'':'<button class="btn small" data-act="tour-finish">Mark as finished</button>'))+'</div></section>'+tourNextHtml(T)+
     '<section class="panel"><h3>Teams <em>'+T.teams.length+'</em></h3>'+(teams||'<div class="empty">No teams yet. Press Add teams to choose from your saved teams.</div>')+
       '<div class="actions" style="padding:10px 14px 14px;margin-top:0"><button class="btn primary" data-act="tm-open" data-v="teams">Add teams</button></div></section>'+peopleHtml(T)+
     '<section class="panel"><h3>Schedule <em>'+done+' of '+T.fixtures.length+' played</em></h3>'+
@@ -1818,12 +1852,10 @@ function actTour(a,d){
       if(T.teams.length<2){toast('Add at least 2 teams first');return false;}
       if(T.teams.some(t=>!ownerOf(T,t.id))){toast('Choose who plays as every team first');return false;}
       if(T.fixtures.some(f=>f.stage==='group')) return false;
-      const add=[];
-      for(let i=0;i<T.teams.length;i++) for(let j=i+1;j<T.teams.length;j++){
-        const a=T.teams[i].id,b=T.teams[j].id;
-        if(ownerOf(T,a)!==ownerOf(T,b)) add.push(mkFix(T,a,b,'Group stage','group',add.length));
-      }
-      if(!add.length){toast('Teams need to be shared between at least two people');return false;}
+      /* Round-robin order: every team plays at most once in each round, and a team never plays another team picked by the same person. */
+      const pairs=roundRobin(T.teams.map(t=>t.id)).filter(q=>ownerOf(T,q[0])!==ownerOf(T,q[1]));
+      if(!pairs.length){toast('Teams need to be shared between at least two people');return false;}
+      const add=pairs.map((q,i)=>mkFix(T,q[0],q[1],'Group match '+(i+1)+' of '+pairs.length,'group',i));
       T.finished=false;T.fixtures=T.fixtures.concat(add);
       tlog(T,'Group stage created: '+plural(add.length,'match')+'. Every team plays the teams picked by the other people.');tourSave(T);
       toast('Group stage: '+plural(add.length,'match'));return true;}
