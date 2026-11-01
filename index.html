@@ -16,6 +16,7 @@
 .livedot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--wicket);margin-right:8px;animation:livepulse 1.4s ease-in-out infinite}
 @keyframes livepulse{0%,100%{opacity:1}50%{opacity:.25}}
 @media (prefers-reduced-motion:reduce){.livedot{animation:none}}
+#teameditor{scroll-margin-top:64px}
 </style>
 <style>
 /* Layout: scorebook column on phones; on tablets the scoring screen splits into board and crease on the left, keypad on the right. Players and teams are saved and picked from lists. */
@@ -442,7 +443,7 @@ let DB=null,pendingOps=[],chain=Promise.resolve();
 function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'base'});}
 const HISTKEY='cricketscorer.hist.v1',SYNCKEY='cricketscorer.sync.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
-const SYNC_URL='https://script.google.com/macros/s/AKfycbxZRlIYpV9gmyeY7upub1xL3NRK9c6aLQT5rqG8xwufkDGbMOhngXkmmn1Lxro0Pylbtw/exec';
+const SYNC_URL='https://script.google.com/macros/s/AKfycbwTnVT72XUsoiGzYZHtBrGp5dusmTMRDJLOcDKugzeYtjn1D5_t-bmVK0_q3hjmf44FAg/exec';
 /* The address is taken from the line above (spaces and quotes are ignored). If that line is empty, the first Google Apps Script web app address found anywhere in this file is used, so it still works if it was pasted a line too high or low. */
 const SYNC_ADDR=(function(){
   let u=String(SYNC_URL||'').replace(/^[\s'"]+|[\s'"]+$/g,'');
@@ -791,7 +792,17 @@ function setSync(st){
   paintSync();
 }
 function paintSync(){const el=document.getElementById('syncind');if(el) el.outerHTML=syncIndHtml();paintWarn();}
+/* While a new team is being put together in the team editor, its players are sent to the other devices once the team is done (Save team), not one by one. */
+let HOLD=0,holdT=null,EDIT_NOW=false;
+function holdSync(){
+  HOLD=Date.now()+120000;clearTimeout(holdT);holdT=setTimeout(releaseHold,120000);
+  /* A send already waiting to go out is cancelled, so the half-built team is not sent. */
+  if(syncT!==null){clearTimeout(syncT);syncT=null;if(SYNC.state==='syncing') setSync('idle');}
+}
+function releaseHold(){if(!HOLD) return;HOLD=0;clearTimeout(holdT);holdT=null;syncSoon();}
 function syncSoon(){
+  /* Only changes made inside the team editor wait. Any other change (a player added or removed on its own, a match, a tournament) is sent at once, together with anything waiting. */
+  if(HOLD&&Date.now()<HOLD){if(EDIT_NOW) return;HOLD=0;clearTimeout(holdT);holdT=null;}
   if(!SYNC.url||SYNC.ready===false) return;
   const b=buildSync();
   if(b.sig===SYNC.last&&SYNC.state!=='fail') return;
@@ -1344,7 +1355,9 @@ function addPlayerTo(k){
   if(!name){toast('Type a player name first');return;}
   let ex=LIB.players.find(p=>p.name.toLowerCase()===name.toLowerCase());
   const id=ex?ex.id:newId('p');
-  if(!ex) libPutPlayer(id,name);
+  if(k==='e') holdSync();
+  EDIT_NOW=(k==='e');
+  try{if(!ex) libPutPlayer(id,name);}finally{EDIT_NOW=false;}
   if(k!=='lib'){
     const p=pk(k);
     if(otherSel(k).indexOf(id)>=0){toast(name+' is already in the other team');holder.newp='';}
@@ -1368,6 +1381,9 @@ function saveTeam(k,quiet,min){
   let ex=p.teamId?LIB.teams.find(t=>t.id===p.teamId):null;
   if(!ex) ex=LIB.teams.find(t=>t.name.toLowerCase()===name.toLowerCase());
   const id=ex?ex.id:newId('t');
+  if(quiet&&k==='e') holdSync();
+  EDIT_NOW=(quiet&&k==='e');
+  try{
   if(ex&&k!=='e'){
     /* Starting a match picks up to 16 from the saved squad, so keep the whole saved squad and only add anyone new. */
     const full=ex.playerIds.filter(i=>libName(i)!=null);
@@ -1375,12 +1391,13 @@ function saveTeam(k,quiet,min){
     const cp=ids.indexOf(p.cap)>=0?p.cap:(full.indexOf(ex.capId)>=0?ex.capId:''),wp=ids.indexOf(p.wk)>=0?p.wk:(full.indexOf(ex.wkId)>=0?ex.wkId:'');
     libPutTeam(id,name,full,cp,wp);
   }else libPutTeam(id,name,ids,ids.indexOf(p.cap)>=0?p.cap:'',ids.indexOf(p.wk)>=0?p.wk:'');
+  }finally{EDIT_NOW=false;}
   p.teamId=id;p.name=name;
   if(!quiet) toast('Team saved');
   return id;
 }
 
-/* In the Players & teams editor every change is saved and sent to the sheet at once, however few players the squad has. */
+/* In the Players & teams editor every change is saved on this device at once. It is sent to the other devices when the team is saved. */
 function autoSaveEditor(){
   const p=ui.squads&&ui.squads.editor;
   if(!p||!normName(p.name)) return;
@@ -2071,7 +2088,7 @@ function squadsHtml(){
       '<div style="padding:0 14px 12px">'+storeNote()+'<div class="addrow"><input id="np-lib" data-k="lib" data-f="newp" value="'+esc(ui.squads.newp)+'" maxlength="40" autocomplete="off" placeholder="New player name" aria-label="New player name"><button class="btn small primary" data-act="add-player" data-k="lib">Add player</button></div></div>'+
       (rows||'<div class="empty">No players saved yet. Add your first player above. They will be there to pick whenever you start a match.</div>')+
     '</section></div><div>'+
-    '<section class="panel pad"><h3>'+(ed.teamId?'Edit team':'Create a team')+'</h3>'+pickerHtml('e')+
+    '<section class="panel pad" id="teameditor"><h3>'+(ed.teamId?'Edit team':'Create a team')+'</h3>'+pickerHtml('e')+
       '<div class="actions"><button class="btn primary" data-act="save-team" data-k="e">Save team</button><button class="btn" data-act="clear-editor">Start a new team</button></div></section>'+
     '<section class="panel"><h3>Saved teams <em>'+LIB.teams.length+'</em></h3>'+(teams||'<div class="empty">No teams saved yet.</div>')+'</section>'+
     '</div></div></div>';
@@ -2125,7 +2142,7 @@ function resetToss(){ui.setup.coin={state:'idle',result:''};ui.setup.winner='';u
 /* actions on the setup and squads screens; returns true when the screen should redraw */
 function actLib(a,d){
   switch(a){
-    case 'screen':ui.screen=d.v;ui.top=true;return true;
+    case 'screen':releaseHold();ui.screen=d.v;ui.top=true;return true;
     case 'tp-add':case 'tp-team':case 'tp-del':case 'tp-view':case 'auto-group':case 'auto-next':case 'tour-type':case 'tour-create':case 'tour-open':case 'tour-finish':case 'tour-reopen':case 'tour-back':case 'tour-del-arm':case 'tour-del':case 'tm-open':case 'tm-close':case 'tm-team-toggle':case 'tm-team-remove':case 'sched-rounds':case 'sched-gen':case 'sched-add':case 'fix-play':case 'fix-unlink':case 'fix-move':case 'fix-del':case 'fix-clear-arm':case 'fix-clear':return actTour(a,d)===true;
     case 'preset':ui.setup.overs=String(d.v);ui.setup.fmt=d.v==='20'?'T20':d.v==='50'?'ODI':'Custom';return true;
     case 'format':{const s=ui.setup;if(s.fixture) return false;s.fmt=d.v;s.maxper='';if(d.v==='T20'||d.v==='IPL') s.overs='20';else if(d.v==='ODI') s.overs='50';else if(d.v==='Custom') s.overs='';return true;}
@@ -2150,8 +2167,8 @@ function actLib(a,d){
       const pl=$('plist');if(pl) pl.innerHTML=pickListHtml(d.k);
       const pc=$('pcount');if(pc) pc.textContent=p.sel.length+' of '+maxSel(d.k)+(iplSquad(d.k)?' needed':' selected')+(p.sel.length>=maxSel(d.k)?' (full)':'');
       return false;}
-    case 'save-team':saveTeam(d.k,false);return true;
-    case 'clear-editor':ui.squads.editor={teamId:'',name:'',sel:[],newp:''};ui.focus='tn-e';return true;
+    case 'save-team':saveTeam(d.k,false);releaseHold();return true;
+    case 'clear-editor':releaseHold();ui.squads.editor={teamId:'',name:'',sel:[],newp:''};ui.focus='tn-e';ui.scrollId='teameditor';return true;
     case 'edit-team':{const t=LIB.teams.find(x=>x.id===d.id);if(t){ui.squads.editor={teamId:t.id,name:t.name,sel:t.playerIds.filter(i=>libName(i)!=null),newp:'',cap:t.capId||'',wk:t.wkId||''};ui.focus='tn-e';}return true;}
     case 'del-all-players-arm':ui.armed='allp';return true;
     case 'del-all-teams-arm':ui.armed='allt';return true;
@@ -2686,7 +2703,10 @@ function render(){
   }
   const wasFocus=ui.focus;
   ui.focus=null;
-  window.scrollTo(0,ui.top?0:sy);ui.top=false;
+  const sid=ui.scrollId;ui.scrollId=null;
+  const sel=sid?$(sid):null;
+  if(sel){try{sel.scrollIntoView({block:'start'});}catch(e){window.scrollTo(0,0);}ui.top=false;}
+  else{window.scrollTo(0,ui.top?0:sy);ui.top=false;}
   /* After adding a player, scroll so the whole add-player bar (box and button) is in sight at the bottom of the screen. */
   if(wasFocus&&String(wasFocus).indexOf('np-')===0) keepBarVisible(wasFocus);
   const cb=$('copybox');if(cb){cb.focus();cb.select();}
