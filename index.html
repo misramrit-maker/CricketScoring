@@ -70,7 +70,7 @@ button{touch-action:manipulation}
 .syncind.done{color:#1E8E34}
 .syncind.fail{color:var(--wicket)}
 .syncind .spin{width:14px;height:14px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:spin .8s linear infinite;flex:none}
-.syncind.done .spin{animation:spin 1.6s linear infinite}
+.syncind.done .spin{animation:none;border-right-color:currentColor}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.syncind .spin{animation-duration:2.4s}}
 .topr{display:flex;align-items:center;gap:6px;min-width:0}
@@ -442,7 +442,7 @@ let DB=null,pendingOps=[],chain=Promise.resolve();
 function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'base'});}
 const HISTKEY='cricketscorer.hist.v1',SYNCKEY='cricketscorer.sync.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
-const SYNC_URL='https://script.google.com/macros/s/AKfycbxaA2nWhBSVLDtgnRMYnHmhfVgdU7hrOGzAmyYHfjUUXb2iZbFns2Za9N2sNGIB3InxnA/exec';
+const SYNC_URL='https://script.google.com/macros/s/AKfycbyZcyGWXNJMyaWZ9kBfbGazdlS5rDC_CZqnh6qT5RmZjGmtH8kCekJ4sfAAIApRaF-6Fg/exec';
 /* The address is taken from the line above (spaces and quotes are ignored). If that line is empty, the first Google Apps Script web app address found anywhere in this file is used, so it still works if it was pasted a line too high or low. */
 const SYNC_ADDR=(function(){
   let u=String(SYNC_URL||'').replace(/^[\s'"]+|[\s'"]+$/g,'');
