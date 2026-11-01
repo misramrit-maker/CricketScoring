@@ -443,8 +443,14 @@ function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'
 const HISTKEY='cricketscorer.hist.v1',SYNCKEY='cricketscorer.sync.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
 const SYNC_URL='';
+/* The address is taken from the line above (spaces and quotes are ignored). If that line is empty, the first Google Apps Script web app address found anywhere in this file is used, so it still works if it was pasted a line too high or low. */
+const SYNC_ADDR=(function(){
+  let u=String(SYNC_URL||'').replace(/^[\s'"]+|[\s'"]+$/g,'');
+  if(!u){try{const m=document.documentElement.outerHTML.match(/https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/(?:exec|dev)/);if(m) u=m[0];}catch(e){}}
+  return u;
+})();
 const BUILD='2026-11-01';
-let HIST=[];const SYNC={url:SYNC_URL,status:'',sheet:'',state:'idle',last:null,hide:null,ready:true};
+let HIST=[];const SYNC={url:SYNC_ADDR,status:'',sheet:'',state:'idle',last:null,hide:null,ready:true};
 const STATEKEY='cricketscorer.stateat.v1';
 let STATEAT='';try{STATEAT=localStorage.getItem(STATEKEY)||'';}catch(e){}
 let APPLYING=false,pulling=false;
@@ -502,7 +508,7 @@ function stamp(){if(APPLYING) return;STATEAT=new Date().toISOString();try{localS
 function persistHist(){stamp();try{localStorage.setItem(HISTKEY,JSON.stringify(HIST));}catch(e){}}
 function loadHist(){try{const h=JSON.parse(localStorage.getItem(HISTKEY)||'null');if(Array.isArray(h)) HIST=h;}catch(e){}
   /* Only when no Sync URL is written in this file: use the one saved on this device, or one given in the page link (?sync=...). */
-  if(!SYNC_URL){
+  if(!SYNC_ADDR){
     try{const y=JSON.parse(localStorage.getItem(SYNCKEY)||'null');if(y&&typeof y.url==='string'&&y.url) SYNC.url=y.url;}catch(e){}
     try{const q=new URLSearchParams(location.search).get('sync');if(q&&/^https:\/\//.test(q)){SYNC.url=q;persistSync();history.replaceState(null,'',location.pathname+location.hash);}}catch(e){}
   }
@@ -1105,9 +1111,9 @@ function histHtml(){
   return '<div class="wrap"><div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div>'+
     '<div class="actions" style="margin-top:0"><button class="btn small" data-act="hist-close">&larr; Back</button></div>'+
     '<section class="panel pad"><h1>Match history</h1>'+catBtns('hist-filter',ui.histFilter||'all')+(LIB.mode==='db'?'<p class="note">Saved with this app and kept between sessions.</p>':'<p class="note">'+(SYNC.url?'Saved in this browser and shared through the spreadsheet.':'Saved in this browser only.')+'</p>')+items+'</section>'+
-    '<section class="panel pad" id="syncpanel"><h3>Spreadsheet sync</h3>'+(SYNC_URL?'':'<label class="field"><span>Sync URL</span><input id="syncurl" type="url" inputmode="url" autocomplete="off" placeholder="Paste your Sync URL here" value="'+esc(SYNC.url)+'" data-f="sync"></label>')+
+    '<section class="panel pad" id="syncpanel"><h3>Spreadsheet sync</h3>'+(SYNC_ADDR?'':'<label class="field"><span>Sync URL</span><input id="syncurl" type="url" inputmode="url" autocomplete="off" placeholder="Paste your Sync URL here" value="'+esc(SYNC.url)+'" data-f="sync"></label>')+
     '<p class="note">All your data (players, teams, matches and the live ball-by-ball) is sent to the spreadsheet whenever anything changes.'+(SYNC.url?'':' Spreadsheet sync is off: add the Sync URL to the index.html file to switch it on.')+' Players and teams you change in the sheet are loaded back into the app within a few seconds.'+(SYNC.status?' <b>'+esc(SYNC.status)+'</b>':'')+'</p>'+
-    '<div class="actions">'+(SYNC_URL?'':'<button class="btn" data-act="sync-link"'+(SYNC.url?'':' disabled')+'>Copy link for other devices</button>')+'<button class="btn" data-act="sync-all"'+(SYNC.url?'':' disabled')+'>Send everything now</button><button class="btn" data-act="sync-pull"'+(SYNC.url?'':' disabled')+'>Sync both ways now</button><button class="btn" data-act="sync-test"'+(SYNC.url?'':' disabled')+'>Check connection and add headings</button></div>'+
+    '<div class="actions">'+(SYNC_ADDR?'':'<button class="btn" data-act="sync-link"'+(SYNC.url?'':' disabled')+'>Copy link for other devices</button>')+'<button class="btn" data-act="sync-all"'+(SYNC.url?'':' disabled')+'>Send everything now</button><button class="btn" data-act="sync-pull"'+(SYNC.url?'':' disabled')+'>Sync both ways now</button><button class="btn" data-act="sync-test"'+(SYNC.url?'':' disabled')+'>Check connection and add headings</button></div>'+
     '<h3 style="margin-top:16px">Save the whole history</h3>'+
     '<div class="actions" style="margin-top:0"><button class="btn primary" data-act="export-sheet"'+(HIST.length?'':' disabled')+'>Save to Google Sheet</button><button class="btn" data-act="export-csv"'+(HIST.length?'':' disabled')+'>Download CSV</button></div>'+
     (SYNC.sheet?'<p class="note"><b>'+esc(SYNC.sheet)+'</b></p>':'')+'</section></div>';
@@ -1883,7 +1889,7 @@ function actTour(a,d){
 /* Shown only while no Sync URL is written in the file, so the app can never stay unshared without saying so. */
 function noSyncHtml(){
   if(SYNC.url) return '';
-  return '<section class="panel pad nosync" role="alert"><h3>Not shared yet</h3><p class="note" style="margin-top:0">No Sync URL is written in this app file, so what you add stays on this device and other devices cannot see it. Put your Google Apps Script address (ending in /exec) in <b>const SYNC_URL</b> in index.html and publish it again. Until then you can paste it here, and the "Copy link for other devices" button in Match history sets it on another device.</p>'+
+  return '<section class="panel pad nosync" role="alert"><h3>Not shared yet</h3><p class="note" style="margin-top:0">This copy of the app has no Sync URL in it (app version '+BUILD+'), so what you add stays on this device and other devices cannot see it. If you have put the address (ending in /exec) in <b>const SYNC_URL</b> in index.html, the page you are viewing is an older copy: upload the file again, then hard-refresh (Ctrl+Shift+R, or clear the site data on a phone). Until then you can paste it here, and the "Copy link for other devices" button in Match history sets it on another device.</p>'+
     '<label class="field"><span>Sync URL</span><input id="syncurl2" type="url" inputmode="url" autocomplete="off" placeholder="Paste your Sync URL here" value="'+esc(SYNC.url)+'" data-f="sync"></label></section>';
 }
 function topNav(){
@@ -2700,7 +2706,7 @@ document.addEventListener('click',e=>{
 });
 function updateToss(){document.querySelectorAll('[data-tn]').forEach(el=>{el.textContent=tn(+el.dataset.tn);});}
 document.addEventListener('input',e=>{
-  if(!SYNC_URL&&e.target.dataset&&e.target.dataset.f==='sync'){SYNC.url=e.target.value.trim();persistSync();SYNC.last=null;syncTry=0;clearTimeout(syncRetryT);clearTimeout(syncUrlT);SYNC.ready=!SYNC.url;if(SYNC.url) syncUrlT=setTimeout(()=>syncStart(()=>syncPush(true)),1200);return;}
+  if(!SYNC_ADDR&&e.target.dataset&&e.target.dataset.f==='sync'){SYNC.url=e.target.value.trim();persistSync();SYNC.last=null;syncTry=0;clearTimeout(syncRetryT);clearTimeout(syncUrlT);SYNC.ready=!SYNC.url;if(SYNC.url) syncUrlT=setTimeout(()=>syncStart(()=>syncPush(true)),1200);return;}
   if(e.target.dataset&&e.target.dataset.f==='psq'){ui.psq=e.target.value;const l=$('psres');if(l) l.innerHTML=psResultsHtml();return;}
   if(e.target.dataset&&e.target.dataset.f==='psearch'){ui.pickQ=e.target.value;const l=$('plist');if(l&&ui.pickK!=null) l.innerHTML=pickListHtml(ui.pickK);return;}
   if(e.target.dataset&&e.target.dataset.f==='tmsearch'){if(ui.tm){ui.tm.q=e.target.value;const T=curTour(),l=$('tmlist');if(T&&l) l.innerHTML=tmTeamsListHtml(T);}return;}
