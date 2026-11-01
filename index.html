@@ -442,7 +442,7 @@ let DB=null,pendingOps=[],chain=Promise.resolve();
 function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'base'});}
 const HISTKEY='cricketscorer.hist.v1',SYNCKEY='cricketscorer.sync.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
-const SYNC_URL='https://script.google.com/macros/s/AKfycbyZcyGWXNJMyaWZ9kBfbGazdlS5rDC_CZqnh6qT5RmZjGmtH8kCekJ4sfAAIApRaF-6Fg/exec';
+const SYNC_URL='https://script.google.com/macros/s/AKfycbxZRlIYpV9gmyeY7upub1xL3NRK9c6aLQT5rqG8xwufkDGbMOhngXkmmn1Lxro0Pylbtw/exec';
 /* The address is taken from the line above (spaces and quotes are ignored). If that line is empty, the first Google Apps Script web app address found anywhere in this file is used, so it still works if it was pasted a line too high or low. */
 const SYNC_ADDR=(function(){
   let u=String(SYNC_URL||'').replace(/^[\s'"]+|[\s'"]+$/g,'');
@@ -886,7 +886,7 @@ function applyState(st){
     }
     if(st.at&&String(st.at)>String(STATEAT)){STATEAT=st.at;try{localStorage.setItem(STATEKEY,STATEAT);}catch(e){}}
   }finally{APPLYING=false;}
-  if(canon(coreObj())!==beforeAll){render();toast('Updated with the latest from the sheet or another device');}
+  if(canon(coreObj())!==beforeAll){render();}
   /* Anything this device has that the sheet does not is sent straight back, so nothing is lost. */
   syncSoon();
 }
@@ -2805,7 +2805,7 @@ function flushNow(){
   if(SYNC.url&&syncT!==null){clearTimeout(syncT);syncT=null;syncPush(false,true);}
 }
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden') flushNow();else pullState();});
-setInterval(()=>{if(document.visibilityState==='visible') pullState();},8000);
+setInterval(()=>{if(document.visibilityState==='visible') pullState();},3000);
 window.addEventListener('pagehide',flushNow);
 window.addEventListener('online',()=>{if(SYNC.url) syncPush(true);if(M) livePush();});
 </script>
