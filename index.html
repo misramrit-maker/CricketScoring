@@ -259,6 +259,39 @@ h1{font-family:var(--font-display);font-size:34px;line-height:1.05;margin:0 0 6p
   .btn.primary:hover:not([disabled]),.key.w:hover{filter:brightness(1.08)}
 }
 @media (min-width:1200px){.wrap{max-width:1180px}.stack{max-width:820px}}
+/* Phones: compact scoring screen so score, this over and bowler fit together */
+@media (max-width:767px){
+  .wrap:has(.cols) .top{padding:6px 0 4px}
+  .wrap:has(.cols) .brand{font-size:20px}
+  .wrap:has(.cols) .dev{display:none}
+  .wrap:has(.cols) .tabs{padding:3px 0}
+  .wrap:has(.cols) .tab{min-height:34px;font-size:13px}
+  .cols .stats .pp{display:none}
+  .cols .board{padding:8px 12px 10px;margin-top:8px}
+  .cols .board .team{font-size:18px}
+  .cols .board .row1{font-size:11px}
+  .cols .score{margin:0 0 4px}
+  .cols .score .r{font-size:clamp(40px,13vw,52px)}
+  .cols .score .sl{font-size:clamp(22px,7vw,30px)}
+  .cols .score .w{font-size:clamp(28px,9vw,38px)}
+  .cols .stats{gap:2px 14px;font-size:12px}
+  .cols .stats b{font-size:13px}
+  .cols .chase{margin-top:6px;padding-top:6px;font-size:13px}
+  .cols .panel{margin-top:8px}
+  .cols .panel h3{padding:6px 12px 2px;font-size:11px}
+  .cols th,.cols td{padding:3px 8px}
+  .cols th{font-size:11px}
+  .cols td.n{font-size:13px}
+  .cols .over{padding:2px 12px 8px;min-height:36px;gap:4px}
+  .cols .chip{min-width:28px;height:28px;border-radius:14px;font-size:12px;padding:0 6px}
+  .cols .hint{display:none}
+  .cols .modes{padding:8px 10px 0;gap:3px}
+  .cols .mode{min-height:34px;font-size:12px}
+  .cols .keys{padding:6px 10px 10px;gap:6px}
+  .cols .key{min-height:44px;font-size:24px;border-radius:8px}
+  .cols .actions{gap:6px;margin-top:8px}
+  .cols .actions .btn{min-height:38px;padding:0 12px;font-size:13px}
+}
 /* Tablets and larger */
 @media (min-width:768px){
   body{font-size:16px}
@@ -443,7 +476,7 @@ let DB=null,pendingOps=[],chain=Promise.resolve();
 function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'base'});}
 const HISTKEY='cricketscorer.hist.v1',SYNCKEY='cricketscorer.sync.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
-const SYNC_URL='https://script.google.com/macros/s/AKfycbyuK1gwQLFNc4wjSm9z8UeX9nIY9YxFgT54d1JDB9OgM2kzNOTgiBVhxSEoSCSbScWaNw/exec';
+const SYNC_URL='https://script.google.com/macros/s/AKfycbx8_Y7Ip9CKa3HkHJTjJOd0609b8VMTjWCFENeGTr2i6X2tDUitiuhZETRZpjStdfB3ww/exec';
 /* The address is taken from the line above (spaces and quotes are ignored). If that line is empty, the first Google Apps Script web app address found anywhere in this file is used, so it still works if it was pasted a line too high or low. */
 const SYNC_ADDR=(function(){
   let u=String(SYNC_URL||'').replace(/^[\s'"]+|[\s'"]+$/g,'');
@@ -2244,7 +2277,7 @@ function boardHtml(A,ci){
   }
   return '<section class="board"><div class="row1"><span class="team">'+esc(t.name)+'</span><span>'+innName(ci)+(inn.so?'':' innings')+' &middot; '+(M.overs?ovLimit(M,inn)+' ov':'Test')+'</span></div>'+
     '<div class="score"><span class="r">'+S.runs+'</span><span class="sl">/</span><span class="w">'+S.wkts+'</span></div>'+
-    '<div class="stats"><span>Overs <b>'+fmtOvers(S.balls)+'</b></span><span>Run rate <b>'+rr.toFixed(2)+'</b></span>'+(M.overs&&!inn.so&&(M.format==='T20'||M.format==='IPL')&&S.balls<36&&!S.done?'<span>Powerplay <b>overs 1-6</b></span>':'')+
+    '<div class="stats"><span>Overs <b>'+fmtOvers(S.balls)+'</b></span><span>Run rate <b>'+rr.toFixed(2)+'</b></span>'+(M.overs&&!inn.so&&(M.format==='T20'||M.format==='IPL')&&S.balls<36&&!S.done?'<span class="pp">Powerplay <b>overs 1-6</b></span>':'')+
     '<span>Extras <b>'+(S.extras.wd+S.extras.nb+S.extras.b+S.extras.lb)+'</b></span></div>'+extra+'</section>';
 }
 
