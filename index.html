@@ -78,6 +78,7 @@ button{touch-action:manipulation}
 .syncind.syncing{color:#B88700}
 .syncind.done{color:#1E8E34}
 .syncind.fail{color:var(--wicket)}
+.syncind.idle{color:var(--muted);font-weight:500}
 .syncind .spin{width:14px;height:14px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:spin .8s linear infinite;flex:none}
 .syncind.done .spin{animation:none;border-right-color:currentColor}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -850,7 +851,8 @@ function buildSync(){
 }
 function syncIndHtml(){
   const st=SYNC.state;
-  const txt=!SYNC.url?'':st==='syncing'?'Syncing to Sheets':st==='done'?'Synced to Sheets':st==='fail'?'Sync failed':'';
+  if(!SYNC.url) return '<span id="syncind" class="syncind idle" role="status" data-act="hist-open" data-v="sync" style="cursor:pointer" title="No Sync URL in this copy of the app. Tap to open the sync settings.">Not syncing</span>';
+  const txt=st==='syncing'?'Syncing to Sheets':st==='done'?'Synced to Sheets':st==='fail'?'Sync failed':'';
   return '<span id="syncind" class="syncind '+(txt?st:'')+'" role="status" aria-live="polite">'+(txt?(st==='fail'?'':'<span class="spin" aria-hidden="true"></span>')+txt:'')+'</span>';
 }
 function setSync(st){
@@ -2264,11 +2266,7 @@ function actTour(a,d){
 
 /* ---------- setup / squads screens ---------- */
 /* Shown only while no Sync URL is written in the file, so the app can never stay unshared without saying so. */
-function noSyncHtml(){
-  if(SYNC.url) return '';
-  return '<section class="panel pad nosync" role="alert"><h3>Not shared yet</h3><p class="note" style="margin-top:0">This copy of the app has no Sync URL in it (app version '+BUILD+'), so what you add stays on this device and other devices cannot see it. If you have put the address (ending in /exec) in <b>const SYNC_URL</b> in index.html, the page you are viewing is an older copy: upload the file again, then hard-refresh (Ctrl+Shift+R, or clear the site data on a phone). Until then you can paste it here, and the "Copy link for other devices" button in Match history sets it on another device.</p>'+
-    '<label class="field"><span>Sync URL</span><input id="syncurl2" type="url" inputmode="url" autocomplete="off" placeholder="Paste your Sync URL here" value="'+esc(SYNC.url)+'" data-f="sync"></label></section>';
-}
+function noSyncHtml(){return '';}
 function topNav(){
   const t=[['setup','New match'],['squads','Players & teams'],['tours','Tournaments'],['ctours','Tours']].map(x=>'<button class="tab" role="tab" aria-selected="'+(ui.screen===x[0])+'" data-act="screen" data-v="'+x[0]+'">'+esc(x[1])+'</button>').join('');
   return '<div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div><div class="tabs four" role="tablist">'+t+'</div>'+noSyncHtml()+syncWarnHtml()+(ui.screen==='setup'?pendingHtml():'');
