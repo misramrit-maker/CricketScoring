@@ -82,7 +82,7 @@ var HEADINGS = {
   "Tournaments": ["Id", "Tournament", "Type", "Overs", "Status", "Teams", "Fixtures", "Played", "Created", "People", "Score or result", "Current stage"],
   "Tournament teams": ["Tournament", "Team", "Played by", "Players", "Played", "Won", "Lost", "Tied", "Drawn", "Tournament ID"],
   "People": ["Tournament", "Person", "Teams played as", "Match wins", "Status", "Tournament ID"],
-  "Fixtures": ["Tournament", "#", "Stage", "Team A", "Team B", "Status", "Result", "Scores", "Date", "Match ID", "Phase", "Person A", "Person B", "Score after match", "Winning team", "Point to", "Tournament ID"],
+  "Fixtures": ["Tournament", "#", "Stage", "Team A", "Team B", "Status", "Result", "Scores", "Date", "Match ID", "Phase", "Person A", "Person B", "Score after match", "Winning team", "Point to", "Tournament ID", "Toss", "Match summary", "Finished at", "Format", "Overs"],
   "Series": ["Tournament", "Team A", "Wins A", "Wins B", "Team B", "Ties", "Draws", "Played", "Total", "Status", "Tournament ID"],
   "Activity": ["Tournament", "When", "What happened", "Tournament ID"],
   "App data": ["Part", "Shared app data (do not edit or delete)"],
@@ -147,6 +147,53 @@ function mergeStates_(a, b) {
     tours: mergeRecs_(a.tours, b.tours, 'o:', del)
   });
 }
+/* A second, separate copy of every saved match and tournament, kept as complete records. If the App data tab is ever lost or emptied, everything is rebuilt from these without losing a detail
+   (scorecards, ball by ball, toss, lineups, fixtures, results, people, activity). Matches and tournaments are in separate tabs so the large matches tab only changes when a match is saved. */
+function writeRecords_(ss, state) {
+  try {
+    var s = normCore_(JSON.parse(JSON.stringify(state)));
+    var tours = s.tours.map(function (t) { var c = {}; for (var k in t) if (k !== 'held') c[k] = t[k]; return c; });
+    writeTab_(ss, 'Match records', ['Part', 'Data'], chunkRows_(JSON.stringify(s.hist)));
+    writeTab_(ss, 'Tournament records', ['Part', 'Data'], chunkRows_(JSON.stringify(tours)));
+    var held = {};
+    s.tours.forEach(function (t) { if (t.held && Object.keys(t.held).length) held[t.id] = t.held; });
+    writeTab_(ss, 'In-progress records', ['Part', 'Data'], chunkRows_(JSON.stringify({ live: s.live || null, liveAt: s.liveAt || '', held: held })));
+  } catch (e) { /* the readable tabs and App data are unaffected */ }
+}
+function readRecords_(ss, name) {
+  try {
+    var t = loadChunks_(ss, name);
+    var v = t ? JSON.parse(t) : [];
+    return Object.prototype.toString.call(v) === '[object Array]' ? v : [];
+  } catch (e) { return []; }
+}
+/* Anything the readable tabs list that the shared data lacks is put back from the complete records first, so nothing is rebuilt from the thinner readable rows. */
+function fillFromRecords_(ss, st, cur, now, lost) {
+  var s = normCore_(JSON.parse(JSON.stringify(st))), changed = false;
+  var haveM = {}, haveT = {};
+  s.hist.forEach(function (x) { haveM[x.id] = true; });
+  s.tours.forEach(function (x) { haveT[x.id] = true; });
+  var missM = (cur.Matches || []).some(function (r) { return r[0] && !haveM[r[0]] && !s.del['m:' + r[0]]; });
+  var missT = rowsNorm_(ss, 'Tournaments', 12).some(function (r) { return r[0] && r[1] && !haveT[r[0]] && !s.del['o:' + r[0]]; });
+  if (missM) readRecords_(ss, 'Match records').forEach(function (r) {
+    if (r && r.id && r.t1 && !haveM[r.id] && !s.del['m:' + r.id]) { s.hist.push(r); haveM[r.id] = true; changed = true; }
+  });
+  if (missT) readRecords_(ss, 'Tournament records').forEach(function (r) {
+    if (r && r.id && r.name && !haveT[r.id] && !s.del['o:' + r.id]) { s.tours.push(r); haveT[r.id] = true; changed = true; }
+  });
+  if (lost || changed) {
+    // Matches saved part-way come back too: tournament matches inside their tournament, and the once-off match that is waiting to be continued.
+    var ip = null;
+    try { var t = loadChunks_(ss, 'In-progress records'); ip = t ? JSON.parse(t) : null; } catch (e) { ip = null; }
+    if (ip) {
+      s.tours.forEach(function (t) {
+        if (ip.held && ip.held[t.id] && !(t.held && Object.keys(t.held).length)) { t.held = ip.held[t.id]; changed = true; }
+      });
+      if (!s.live && ip.live) { s.live = ip.live; s.liveAt = ip.liveAt || s.liveAt; changed = true; }
+    }
+  }
+  return changed ? s : null;
+}
 function loadChunks_(ss, name) {
   var rows = readTab_(ss, name);
   rows.sort(function (a, b) { return Number(a[0]) - Number(b[0]); });
@@ -166,6 +213,7 @@ function saveState_(ss, props, state, by) {
   var newAt = new Date().toISOString();
   state.at = newAt;
   writeTab_(ss, 'App data', HEADINGS['App data'], chunkRows_(JSON.stringify(state)));
+  writeRecords_(ss, state);
   props.setProperty('stateAt', newAt);
   props.setProperty('stateBy', by || '');
 }
@@ -328,7 +376,12 @@ function absorbDiff_(stored, base, cur, now) {
 var STAGE_KEY_ = { 'Group stage': 'group', 'Quarter-finals': 'qf', 'Semi-finals': 'sf', 'Qualifier 1 and Eliminator': 'po', 'Qualifier 2': 'q2', 'Final': 'final' };
 function tourTypeOf_(label) {
   var s = String(label || '');
+  if (/^Tri-series$/i.test(s)) return 'TRI';
+  if (/^Tour$/i.test(s)) return 'TOUR';
   if (/IPL/i.test(s)) return 'IPL';
+  if (/T20 World Championship/i.test(s)) return 'T20WC';
+  if (/Cricket World Cup/i.test(s)) return 'CWC';
+  if (/Champions Trophy/i.test(s)) return 'CT';
   if (/World Test|WTC|Test/i.test(s)) return 'WTC';
   return 'Custom';
 }
@@ -400,6 +453,7 @@ function rebuildTours_(stateIn, tabs, now) {
       if (!a || !b) return;
       var sk = STAGE_KEY_[f[10]] || '';
       var o = { id: newId_('f'), a: a, b: b, label: f[2], done: false, result: null };
+      if (f[20]) { o.fmt = f[20]; var ovn = parseInt(f[21], 10); o.ov = ovn > 0 ? ovn : null; }
       if (sk) { o.stage = sk; o.slot = stageCount[sk] || 0; stageCount[sk] = o.slot + 1; }
       o.pa = f[11] ? person(f[11]) : '';
       o.pb = f[12] ? person(f[12]) : '';
@@ -431,7 +485,7 @@ function recoverTours_(ss, state, now) {
   if (!missing.length) return null;
   var r = rebuildTours_(s, {
     Tournaments: list, TTeams: rowsNorm_(ss, 'Tournament teams', 10), People: rowsNorm_(ss, 'People', 6),
-    Fixtures: rowsNorm_(ss, 'Fixtures', 17), Activity: rowsNorm_(ss, 'Activity', 4)
+    Fixtures: rowsNorm_(ss, 'Fixtures', 22), Activity: rowsNorm_(ss, 'Activity', 4)
   }, now);
   return r.changed ? r.state : null;
 }
@@ -450,7 +504,10 @@ function absorbSheet_(ss, stored, fallback) {
     try { base = baseText ? JSON.parse(baseText) : emptyBase; } catch (x) { base = emptyBase; }
   }
   var nowIso = new Date().toISOString();
+  var fr = fillFromRecords_(ss, st, cur, nowIso, !stored);
+  if (fr) st = fr;
   var r = absorbDiff_(st, base, cur, nowIso);
+  if (fr) r = { changed: true, state: r.state };
   var rt = recoverTours_(ss, r.state, nowIso);
   if (rt) r = { changed: true, state: rt };
   if (r.changed) return r.state;
@@ -755,7 +812,7 @@ function pad_(row, width) {
   return r;
 }
 
-var CODE_VERSION = '2026-11-01';
+var CODE_VERSION = '2026-11-17c';
 function out_(obj) {
   if (obj && typeof obj === 'object') obj.v = CODE_VERSION;
   return ContentService
