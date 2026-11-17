@@ -492,7 +492,7 @@ const SYNC_URL='';
 /* The address is taken from the line above (spaces and quotes are ignored). If that line is empty, the first Google Apps Script web app address found anywhere in this file is used, so it still works if it was pasted a line too high or low. */
 const SYNC_ADDR=(function(){
   let u=String(SYNC_URL||'').replace(/^[\s'"]+|[\s'"]+$/g,'');
-  if(!u){try{const m=document.documentElement.outerHTML.match(/https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/(?:exec|dev)/);if(m) u=m[0];}catch(e){}}
+  if(!u){try{const m=document.documentElement.outerHTML.match(/https:\/\/script\.google\.com\/[-A-Za-z0-9_./]+?\/(?:exec|dev)(?![A-Za-z0-9_])/);if(m) u=m[0];}catch(e){}}
   return u;
 })();
 const BUILD='2026-11-17f';
@@ -851,7 +851,7 @@ function buildSync(){
 }
 function syncIndHtml(){
   const st=SYNC.state;
-  if(!SYNC.url) return '<span id="syncind" class="syncind idle" role="status" data-act="hist-open" data-v="sync" style="cursor:pointer" title="No Sync URL in this copy of the app. Tap to open the sync settings.">Not syncing</span>';
+  if(!SYNC.url) return '<span id="syncind" class="syncind idle" role="status" data-act="sync-dlg" style="cursor:pointer" title="No Sync URL was found in this copy of the app. Tap to see why.">Not syncing</span>';
   const txt=st==='syncing'?'Syncing to Sheets':st==='done'?'Synced to Sheets':st==='fail'?'Sync failed':'';
   return '<span id="syncind" class="syncind '+(txt?st:'')+'" role="status" aria-live="polite">'+(txt?(st==='fail'?'':'<span class="spin" aria-hidden="true"></span>')+txt:'')+'</span>';
 }
@@ -2265,9 +2265,17 @@ function actTour(a,d){
 /* ---------- setup / squads screens ---------- */
 /* Shown only while no Sync URL is written in the file, so the app can never stay unshared without saying so. */
 function noSyncHtml(){return '';}
+function syncDlgHtml(){
+  const raw=String(SYNC_URL||'').replace(/\s+/g,' ').trim();
+  return '<div class="scrim" data-act="sync-dlg-bg"><div class="sheet" role="dialog" aria-modal="true" aria-label="Sync URL"><h2>No Sync URL found</h2>'+
+    '<p class="muted" style="margin:0">This copy of the app (version '+esc(BUILD)+') did not find a Sync URL, so it cannot send to or read from your Google Sheet. The Syncing and Synced animations appear as soon as it has one.</p>'+
+    '<p class="note">The line <b>const SYNC_URL=\'\';</b> in this copy of index.html holds: <b>'+(raw?esc(raw):'nothing (it is empty)')+'</b>. Put your address (the one ending in /exec) between the two quotes, save, upload the file to GitHub, then hard-refresh this page. Until then you can paste it here to try it on this device.</p>'+
+    '<label class="field"><span>Sync URL</span><input id="syncurl3" type="url" inputmode="url" autocomplete="off" placeholder="Paste your Sync URL here" data-f="sync"></label>'+
+    '<div class="actions" style="margin-top:14px"><button class="btn primary" data-act="sync-dlg">Close</button></div></div></div>';
+}
 function topNav(){
   const t=[['setup','New match'],['squads','Players & teams'],['tours','Tournaments'],['ctours','Tours']].map(x=>'<button class="tab" role="tab" aria-selected="'+(ui.screen===x[0])+'" data-act="screen" data-v="'+x[0]+'">'+esc(x[1])+'</button>').join('');
-  return '<div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div><div class="tabs four" role="tablist">'+t+'</div>'+noSyncHtml()+syncWarnHtml()+(ui.screen==='setup'?pendingHtml():'');
+  return '<div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div><div class="tabs four" role="tablist">'+t+'</div>'+noSyncHtml()+syncWarnHtml()+(ui.screen==='setup'?pendingHtml():'')+(ui.syncDlg&&!SYNC.url?syncDlgHtml():'');
 }
 function storeNote(){
   return '<p class="note">'+(LIB.mode==='db'?'Players, teams and the live match are shared with every device that opens this page, and kept between sessions.':LIB.mode==='loading'?'Connecting to your saved players...':(SYNC.url?'Players and teams are saved in this browser and shared through the spreadsheet.':'Players and teams are saved in this browser only.'))+'</p>';
@@ -2534,6 +2542,7 @@ function actLib(a,d){
     case 'view-teams':ui.scrollId='savedteams';return true;
     case 'ed-cat':{const e=ui.squads.editor;e.cat=d.v;if(e.teamId){libSetCat(e.teamId,d.v);}return true;}
     case 'team-cat':ui.teamCat=ui.teamCat===d.v?'':d.v;return true;
+    case 'sync-dlg':ui.syncDlg=!ui.syncDlg;return true;
     case 'clear-editor':releaseHold();ui.squads.editor={teamId:'',name:'',sel:[],newp:''};ui.focus='tn-e';ui.scrollId='teameditor';return true;
     case 'edit-team':{const t=LIB.teams.find(x=>x.id===d.id);if(t){ui.squads.editor={teamId:t.id,name:t.name,sel:t.playerIds.filter(i=>libName(i)!=null),newp:'',cap:t.capId||'',wk:t.wkId||'',cat:catOf(t)};ui.focus='tn-e';ui.scrollId='teameditor';}return true;}
     case 'del-all-players-arm':ui.armed='allp';return true;
@@ -3106,6 +3115,7 @@ document.addEventListener('click',e=>{
   const el=e.target.closest('[data-act]');
   if(!el||el.disabled) return;
   if(el.dataset.act==='wk-cancel-bg'){if(e.target===el){ui.wk=null;render();}return;}
+  if(el.dataset.act==='sync-dlg-bg'){if(e.target===el){ui.syncDlg=false;render();}return;}
   if(el.dataset.act==='tm-close-bg'){if(e.target===el){ui.tm=null;render();}return;}
   if(el.dataset.act==='team-close-bg'){if(e.target===el){ui.teamK=null;render();}return;}
   if(el.dataset.act==='ps-close-bg'){if(e.target===el){ui.ps=null;render();}return;}
@@ -3115,7 +3125,7 @@ document.addEventListener('click',e=>{
 });
 function updateToss(){document.querySelectorAll('[data-tn]').forEach(el=>{el.textContent=tn(+el.dataset.tn);});}
 document.addEventListener('input',e=>{
-  if(!SYNC_ADDR&&e.target.dataset&&e.target.dataset.f==='sync'){SYNC.url=e.target.value.trim();persistSync();SYNC.last=null;syncTry=0;clearTimeout(syncRetryT);clearTimeout(syncUrlT);SYNC.ready=!SYNC.url;if(SYNC.url) syncUrlT=setTimeout(()=>syncStart(()=>syncPush(true)),1200);if(/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/(exec|dev)$/.test(SYNC.url)&&!M) render();return;}
+  if(!SYNC_ADDR&&e.target.dataset&&e.target.dataset.f==='sync'){SYNC.url=e.target.value.trim();persistSync();SYNC.last=null;syncTry=0;clearTimeout(syncRetryT);clearTimeout(syncUrlT);SYNC.ready=!SYNC.url;if(SYNC.url) syncUrlT=setTimeout(()=>syncStart(()=>syncPush(true)),1200);if(/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/(exec|dev)$/.test(SYNC.url)&&!M){ui.syncDlg=false;render();}return;}
   if(e.target.dataset&&e.target.dataset.f==='ctsearch'){ui.ctnew.q=e.target.value;const l=$('ctbricks');if(l) l.innerHTML=brickListHtml();return;}
   if(e.target.dataset&&e.target.dataset.f==='psq'){ui.psq=e.target.value;const l=$('psres');if(l) l.innerHTML=psResultsHtml();return;}
   if(e.target.dataset&&e.target.dataset.f==='psearch'){ui.pickQ=e.target.value;const l=$('plist');if(l&&ui.pickK!=null) l.innerHTML=pickListHtml(ui.pickK);return;}
@@ -3229,7 +3239,10 @@ setInterval(()=>{if(M&&document.visibilityState==='visible'){try{if(!matchOutcom
 let heldSig='';
 setInterval(()=>{if(M) return;const sg=allHeld().map(m=>m.uid+':'+heldState(m)).join(',');if(sg!==heldSig){const first=heldSig==='';heldSig=sg;if(!first) render();}},10000);
 window.addEventListener('pagehide',flushNow);
-window.addEventListener('online',()=>{if(SYNC.url) syncPush(true);if(M) livePush();});
+window.addEventListener('online',()=>{if(SYNC.url){syncPush(true);pullState(true);}if(M) livePush();});
+/* Coming back to the app (switching apps, unlocking the phone, restoring a cached page) reads the sheet straight away instead of waiting for the next timer tick. */
+window.addEventListener('focus',()=>{if(SYNC.url) pullState();});
+window.addEventListener('pageshow',e=>{if(e.persisted&&SYNC.url) pullState(true);});
 </script>
 </body>
 </html>
