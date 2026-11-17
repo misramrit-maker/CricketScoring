@@ -3076,7 +3076,7 @@ document.addEventListener('click',e=>{
 });
 function updateToss(){document.querySelectorAll('[data-tn]').forEach(el=>{el.textContent=tn(+el.dataset.tn);});}
 document.addEventListener('input',e=>{
-  if(!SYNC_ADDR&&e.target.dataset&&e.target.dataset.f==='sync'){SYNC.url=e.target.value.trim();persistSync();SYNC.last=null;syncTry=0;clearTimeout(syncRetryT);clearTimeout(syncUrlT);SYNC.ready=!SYNC.url;if(SYNC.url) syncUrlT=setTimeout(()=>syncStart(()=>syncPush(true)),1200);return;}
+  if(!SYNC_ADDR&&e.target.dataset&&e.target.dataset.f==='sync'){SYNC.url=e.target.value.trim();persistSync();SYNC.last=null;syncTry=0;clearTimeout(syncRetryT);clearTimeout(syncUrlT);SYNC.ready=!SYNC.url;if(SYNC.url) syncUrlT=setTimeout(()=>syncStart(()=>syncPush(true)),1200);if(/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/(exec|dev)$/.test(SYNC.url)&&!M) render();return;}
   if(e.target.dataset&&e.target.dataset.f==='ctsearch'){ui.ctnew.q=e.target.value;const l=$('ctbricks');if(l) l.innerHTML=brickListHtml();return;}
   if(e.target.dataset&&e.target.dataset.f==='psq'){ui.psq=e.target.value;const l=$('psres');if(l) l.innerHTML=psResultsHtml();return;}
   if(e.target.dataset&&e.target.dataset.f==='psearch'){ui.pickQ=e.target.value;const l=$('plist');if(l&&ui.pickK!=null) l.innerHTML=pickListHtml(ui.pickK);return;}
