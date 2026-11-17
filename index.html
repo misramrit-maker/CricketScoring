@@ -486,7 +486,7 @@ let DB=null,pendingOps=[],chain=Promise.resolve();
 function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'base'});}
 const HISTKEY='cricketscorer.hist.v1',SYNCKEY='cricketscorer.sync.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
-const SYNC_URL='';
+const SYNC_URL='https://script.google.com/macros/s/AKfycbwfueVAtxX-XSVyo_ft3TEx634iShJgHg8Gcw1kciw9o-mnkDTvv2x10oImWzG9PkP6NA/exec';
 /* The address is taken from the line above (spaces and quotes are ignored). If that line is empty, the first Google Apps Script web app address found anywhere in this file is used, so it still works if it was pasted a line too high or low. */
 const SYNC_ADDR=(function(){
   let u=String(SYNC_URL||'').replace(/^[\s'"]+|[\s'"]+$/g,'');
@@ -983,16 +983,20 @@ function pullState(force){
     if(q.stateBy&&q.stateBy===DEVICE){SEENAT=q.stateAt;return false;}
     return true;
   });
-  return quick.then(need=>need?sheetStatus('state'):null).then(d=>{
+  /* Reading new data from the sheet shows the same Syncing / Synced animation as sending, unless a send is already showing it. */
+  let shown=false;
+  const sendBusy=()=>syncT!==null||(SYNC.busy&&Date.now()<SYNC.busy);
+  const fin=ok=>{if(shown&&!sendBusy()) setSync(ok?'done':'fail');};
+  return quick.then(need=>{if(need){if(!sendBusy()&&SYNC.state!=='syncing'){shown=true;setSync('syncing');}return sheetStatus('state');}return null;}).then(d=>{
     pulling=false;
     if(d===null) return false;
-    if(d&&d.ok!==false&&d.state==='') return 'none';
-    if(!d||d.ok===false||!d.state) return false;
+    if(d&&d.ok!==false&&d.state===''){fin(true);return 'none';}
+    if(!d||d.ok===false||!d.state){fin(false);return false;}
     let st=null;try{st=JSON.parse(d.state);}catch(e){}
-    if(!st) return false;
+    if(!st){fin(false);return false;}
     SEENAT=d.stateAt||'';
-    applyState(st);return true;
-  }).catch(()=>{pulling=false;return false;});
+    applyState(st);fin(true);return true;
+  }).catch(()=>{pulling=false;fin(false);return false;});
 }
 function syncStart(then){
   if(!SYNC.url){SYNC.ready=true;return;}
