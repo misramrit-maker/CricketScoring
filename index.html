@@ -46,9 +46,10 @@ body:has(.resumefab) .wrap{padding-bottom:96px}
   --extra:#5A6878;
   --scrim:rgba(10,18,13,.55);
 }
-/* Background colour follows the match format: T20 blue, IPL yellow, ODI green, Test white, Custom overs orange */
+/* Background colour follows the match format: T20 blue, ETPL purple, IPL yellow, ODI green, Test white, Custom overs orange */
 :root[data-fmt="T20"]{--bg:#9CC9F0;--surface:#EEF6FD;--surface2:#D6E8F8;--ink:#0A1F33;--muted:#3A5670;--line:#6FA6D8;--accent:#0B4F8F;--board:#0A2A4A;--board-ink:#EAF3FC;--board-muted:#9DBFE0;--board-line:#25507F}
 :root[data-fmt="IPL"]{--bg:#FFE066;--surface:#FFF9DB;--surface2:#FFF0A3;--ink:#2B2300;--muted:#5E5220;--line:#E0BE2E;--accent:#7A5B00;--board:#3A2E00;--board-ink:#FFF6CC;--board-muted:#E6CF7A;--board-line:#6B5710}
+:root[data-fmt="ETPL"]{--bg:#C9B3F2;--surface:#F4EEFD;--surface2:#E2D5F8;--ink:#1E0F36;--muted:#4C3A6E;--line:#A184DA;--accent:#5B2A9E;--board:#2A1450;--board-ink:#F1EAFC;--board-muted:#BFA9E8;--board-line:#4F2E86}
 :root[data-fmt="Test"]{--bg:#FFFFFF;--surface:#F4F4F4;--surface2:#E8E8E8;--ink:#111111;--muted:#555555;--line:#CFCFCF;--accent:#26403B;--board:#1B1B1B;--board-ink:#F5F5F5;--board-muted:#BDBDBD;--board-line:#444444}
 :root[data-fmt="Custom"]{--bg:#FFB066;--surface:#FFF1E0;--surface2:#FFDDB8;--ink:#2E1700;--muted:#6A4120;--line:#E8933A;--accent:#A14A00;--board:#3D1E00;--board-ink:#FFEAD2;--board-muted:#E8BC8C;--board-line:#7A4311}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -486,14 +487,14 @@ let DB=null,pendingOps=[],chain=Promise.resolve();
 function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'base'});}
 const HISTKEY='cricketscorer.hist.v1',SYNCKEY='cricketscorer.sync.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
-const SYNC_URL='https://script.google.com/macros/s/AKfycbwfueVAtxX-XSVyo_ft3TEx634iShJgHg8Gcw1kciw9o-mnkDTvv2x10oImWzG9PkP6NA/exec';
+const SYNC_URL='';
 /* The address is taken from the line above (spaces and quotes are ignored). If that line is empty, the first Google Apps Script web app address found anywhere in this file is used, so it still works if it was pasted a line too high or low. */
 const SYNC_ADDR=(function(){
   let u=String(SYNC_URL||'').replace(/^[\s'"]+|[\s'"]+$/g,'');
   if(!u){try{const m=document.documentElement.outerHTML.match(/https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/(?:exec|dev)/);if(m) u=m[0];}catch(e){}}
   return u;
 })();
-const BUILD='2026-11-17c';
+const BUILD='2026-11-17f';
 let HIST=[];const SYNC={url:SYNC_ADDR,status:'',sheet:'',state:'idle',last:null,hide:null,ready:true};
 const STATEKEY='cricketscorer.stateat.v1';
 let STATEAT='';try{STATEAT=localStorage.getItem(STATEKEY)||'';}catch(e){}
@@ -626,11 +627,18 @@ function removeAllHtml(kind){
       :'<button class="btn danger" data-act="del-all-'+(kind==='p'?'players':'teams')+'-arm">Remove all '+word+'s</button>')+'</div>';
 }
 function uniq(a){return a.filter((x,i)=>a.indexOf(x)===i);}
-function libPutTeam(id,name,playerIds,capId,wkId){
+const TEAM_CATS=['International','IPL','ETPL','Custom'];
+function catOf(t){return t&&TEAM_CATS.indexOf(t.cat)>=0?t.cat:'Custom';}
+function libSetCat(id,cat){
+  const t=LIB.teams.find(x=>x.id===id);
+  if(!t||TEAM_CATS.indexOf(cat)<0||catOf(t)===cat&&t.cat===cat) return;
+  t.cat=cat;t.u=nowIso();persistLib();syncSoon();
+}
+function libPutTeam(id,name,playerIds,capId,wkId,cat){
   capId=capId||'';wkId=wkId||'';playerIds=uniq(playerIds);
   const i=LIB.teams.findIndex(t=>t.id===id);
-  if(i>=0){LIB.teams[i].name=name;LIB.teams[i].playerIds=playerIds.slice();LIB.teams[i].capId=capId;LIB.teams[i].wkId=wkId;LIB.teams[i].u=nowIso();}
-  else LIB.teams.push({id:id,name:name,playerIds:playerIds.slice(),capId:capId,wkId:wkId,u:nowIso()});
+  if(i>=0){LIB.teams[i].name=name;LIB.teams[i].playerIds=playerIds.slice();LIB.teams[i].capId=capId;LIB.teams[i].wkId=wkId;if(TEAM_CATS.indexOf(cat)>=0) LIB.teams[i].cat=cat;LIB.teams[i].u=nowIso();}
+  else LIB.teams.push({id:id,name:name,playerIds:playerIds.slice(),capId:capId,wkId:wkId,cat:TEAM_CATS.indexOf(cat)>=0?cat:'Custom',u:nowIso()});
   LIB.teams.sort(byName);persistLib();syncSoon();
   const ids=playerIds.slice();
   remote(db=>db.doc('teams/'+id).set({name:name,playerIds:ids,capId:capId,wkId:wkId}));
@@ -810,7 +818,7 @@ function buildSync(){
     try{const j=tossData(),nm=M.teams[0].name+' v '+M.teams[1].name+' (in progress)';tossRows.unshift(['In progress',(M.recAt||M.savedAt||new Date().toISOString()).slice(0,10),nm,M.format||'',j.mode,j.caller,j.call,j.landed,j.winner,j.choice,tossText(),'']);}catch(e){}
   }));
   const players=LIB.players.map(x=>[x.id,x.name,LIB.teams.filter(t=>t.playerIds.indexOf(x.id)>=0).map(t=>t.name).join(', ')]);
-  const teams=LIB.teams.map(x=>[x.id,x.name,x.playerIds.map(nm).filter(Boolean).join(', '),nm(x.capId),nm(x.wkId),x.playerIds.filter(i=>libName(i)!=null).join(',')]);
+  const teams=LIB.teams.map(x=>[x.id,x.name,x.playerIds.map(nm).filter(Boolean).join(', '),nm(x.capId),nm(x.wkId),x.playerIds.filter(i=>libName(i)!=null).join(','),catOf(x)]);
   const liveHead=['Match','Innings','Event #','Type','Ball kind','Runs','Bowler','Wicket','Batter out','Fielder','Bowler id'];
   const core=coreObj();const o={app:'CricketScorer',dev:DEVICE,
     stateAt:'',state:canon(core),
@@ -820,7 +828,7 @@ function buildSync(){
     liveHead:liveHead,live:live,
     tabs:[
       {name:'Players',head:['Id','Name','Teams'],rows:players},
-      {name:'Teams',head:['Id','Team','Players','Captain','Wicketkeeper','Player ids'],rows:teams},
+      {name:'Teams',head:['Id','Team','Players','Captain','Wicketkeeper','Player ids','Category'],rows:teams},
       {name:'Matches',head:['Match ID'].concat(CSVHEAD),rows:HIST.slice().reverse().map(r=>[r.id].concat(histRow(r)))},
       {name:'Innings',head:['Match ID','Date','Match','Innings','Batting team','Runs','Wickets','Overs','Extras','Fall of wickets'],rows:c.inn},
       {name:'Batting',head:['Match ID','Date','Match','Innings','Team','Batter','How out','Runs','Balls','4s','6s','Strike rate'],rows:c.bat},
@@ -1365,6 +1373,7 @@ function pickerHtml(k){
       (LIB.teams.length?'<button class="btn arrowbtn" data-act="team-open" data-k="'+k+'" aria-haspopup="dialog" aria-label="Choose a saved team"><i class="chev" aria-hidden="true">&rsaquo;</i></button>':'')+'</div>'+
       (LIB.teams.length?'<input class="searchbox" type="search" data-f="qopen" data-q="team" data-k="'+k+'" placeholder="Search saved teams" aria-label="Search saved teams" autocomplete="off" style="margin:8px 0 0">':'')+
       (p.teamId?'<span class="note" style="margin:0">Saved team</span>':'')+'</div>'+
+    (k==='e'?'<div class="field"><span>Category</span><div class="opts">'+TEAM_CATS.map(c=>'<button class="opt" data-act="ed-cat" data-v="'+c+'" aria-pressed="'+((p.cat||'Custom')===c)+'">'+c+'</button>').join('')+'</div></div>':'')+
     '<div class="field"><span>Squad</span>'+
       (LIB.players.length?'<input class="searchbox" type="search" data-f="qopen" data-q="pick" data-k="'+k+'" placeholder="Search saved players or a team" aria-label="Search saved players or a team" autocomplete="off" style="margin:0 0 8px">':'')+
       (LIB.players.length?'<button class="btn pickrow" data-act="pick-open" data-k="'+k+'" aria-haspopup="dialog"><span>Select players</span><span class="pickcount">'+p.sel.length+' of '+maxSel(k)+(iplSquad(k)?' needed':' selected')+' <i class="chev" aria-hidden="true">&rsaquo;</i></span></button>':'<div class="note">No saved players yet. Add your first player below.</div>')+
@@ -1406,11 +1415,11 @@ function pickModal(){
 }
 function teamListHtml(k){
   const p=pk(k),q=(ui.teamQ||'').trim().toLowerCase();
-  const list=LIB.teams.filter(t=>!q||t.name.toLowerCase().indexOf(q)>=0);
+  const list=LIB.teams.filter(t=>(!q||t.name.toLowerCase().indexOf(q)>=0)&&(!ui.teamCat||catOf(t)===ui.teamCat));
   if(!list.length) return '<div class="empty">No saved teams match "'+esc(ui.teamQ||'')+'".</div>';
   return list.map(t=>{
     const on=p.teamId===t.id,n=t.playerIds.filter(i=>libName(i)!=null).length;
-    return '<div class="prow'+(on?' on':'')+'"><span class="pn">'+esc(t.name)+'<span class="sub">'+plural(n,'player')+'</span></span>'+
+    return '<div class="prow'+(on?' on':'')+'"><span class="pn">'+esc(t.name)+'<span class="sub">'+catOf(t)+' &middot; '+plural(n,'player')+'</span></span>'+
       '<button class="btn small'+(on?'':' primary')+'" data-act="team-add" data-k="'+k+'" data-id="'+esc(t.id)+'" aria-label="Add '+esc(t.name)+'">'+(on?'Added':'Add')+'</button></div>';
   }).join('');
 }
@@ -1418,6 +1427,7 @@ function teamModal(){
   const k=ui.teamK;
   return '<div class="scrim" data-act="team-close-bg"><div class="sheet" role="dialog" aria-modal="true" aria-label="Saved teams">'+
     '<h2>Saved teams</h2><p class="muted" style="margin:0">Search for a team and press Add to use it.</p>'+
+    '<div class="opts" style="margin-top:8px">'+TEAM_CATS.map(c=>'<button class="opt" data-act="team-cat" data-v="'+c+'" aria-pressed="'+(ui.teamCat===c)+'">'+c+'</button>').join('')+'</div>'+
     '<input class="searchbox" id="tsearch" type="search" data-f="tsearch" value="'+esc(ui.teamQ||'')+'" placeholder="Search teams" autocomplete="off" aria-label="Search teams">'+
     '<div class="plist" id="tlist">'+teamListHtml(k)+'</div>'+
     '<div class="actions" style="margin-top:18px"><button class="btn" data-act="team-add" data-k="'+k+'" data-id="">Start a new team</button><button class="btn primary" data-act="team-close">Close</button></div></div></div>';
@@ -1474,7 +1484,7 @@ function saveTeam(k,quiet,min){
     ids.forEach(i=>{if(full.indexOf(i)<0&&full.length<65) full.push(i);});
     const cp=ids.indexOf(p.cap)>=0?p.cap:(full.indexOf(ex.capId)>=0?ex.capId:''),wp=ids.indexOf(p.wk)>=0?p.wk:(full.indexOf(ex.wkId)>=0?ex.wkId:'');
     libPutTeam(id,name,full,cp,wp);
-  }else libPutTeam(id,name,ids,ids.indexOf(p.cap)>=0?p.cap:'',ids.indexOf(p.wk)>=0?p.wk:'');
+  }else libPutTeam(id,name,ids,ids.indexOf(p.cap)>=0?p.cap:'',ids.indexOf(p.wk)>=0?p.wk:'',k==='e'?p.cat:undefined);
   }finally{EDIT_NOW=false;}
   p.teamId=id;p.name=name;
   if(!quiet) toast('Team saved');
@@ -1492,10 +1502,11 @@ function autoSaveEditor(){
    Playing a fixture opens the normal match setup for those two teams. When the match ends, its result
    is filed against the fixture and the running scores between teams update. */
 const TOURKEY='cricketscorer.tours.v1';
-const TT={TRI:'Tri-series',TOUR:'Tour',IPL:'IPL Tournament',T20WC:'T20 World Championship',CWC:'Cricket World Cup',CT:'Champions Trophy',Custom:'Custom Overs Tournament',WTC:'World Test Championship'};
-const TOUR_ORDER=['IPL','T20WC','CWC','CT','Custom','WTC'];
+const TT={TRI:'Tri-series',TOUR:'Tour',IPL:'IPL Tournament',ETPL:'ETPL Tournament',T20WC:'T20 World Championship',CWC:'Cricket World Cup',CT:'Champions Trophy',Custom:'Custom Overs Tournament',WTC:'World Test Championship'};
+const TEAM_CAP={IPL:10,ETPL:6};
+const TOUR_ORDER=['IPL','ETPL','T20WC','CWC','CT','Custom','WTC'];
 /* The match format and overs each tournament type plays. */
-const TOUR_FMT={IPL:['IPL',20],T20WC:['T20',20],CWC:['ODI',50],CT:['ODI',50],WTC:['Test',null]};
+const TOUR_FMT={IPL:['IPL',20],ETPL:['ETPL',20],T20WC:['T20',20],CWC:['ODI',50],CT:['ODI',50],WTC:['Test',null]};
 let TOURS=[];
 function persistTours(){stamp();try{localStorage.setItem(TOURKEY,JSON.stringify(TOURS));}catch(e){}}
 function loadTours(){try{const t=JSON.parse(localStorage.getItem(TOURKEY)||'null');if(Array.isArray(t)) TOURS=t.filter(x=>x&&x.id&&Array.isArray(x.teams)&&Array.isArray(x.fixtures));}catch(e){}}
@@ -1506,7 +1517,7 @@ function tourSave(T){
 function tourDelete(id){TOURS=TOURS.filter(x=>x.id!==id);tomb('o:'+id);persistTours();syncSoon();remote(db=>db.doc('tournaments/'+id).delete());}
 function curTour(){return TOURS.find(t=>t.id===(ui.screen==='ctours'?ui.ctId:ui.tourId))||null;}
 function tName(T,id){const t=T.teams.find(x=>x.id===id);return t?t.name:'Team';}
-function tourStages(T){return T.type==='WTC'?['Test','Final']:['League match','Qualifier 1','Eliminator','Qualifier 2','Semi-final','Final'];}
+function tourStages(T){return T.type==='WTC'?['Test','Final']:['League match','Quarter-final','Semi-final','Semi-final 1','Semi-final 2','Semi-final 3','Final'];}
 function isSeries(T){return !!T&&(T.type==='TRI'||T.type==='TOUR');}
 function tourScreenFor(T){return isSeries(T)?'ctours':'tours';}
 function tourFmt(T){return TOUR_FMT[T.type]?TOUR_FMT[T.type][0]:'Custom';}
@@ -1516,9 +1527,10 @@ function fixInfo(fx){
   return f?{T:T,f:f}:null;
 }
 function tourDesc(T){
-  if(T.type==='IPL') return '20 overs a side, 16-player squads with an impact player.';
+  if(T.type==='IPL') return '20 overs a side, 16-player squads with an impact player. A league, then 3 semi-finals and the final.';
   if(T.type==='TOUR') return 'A bilateral tour: you choose the format of each match and the order they are played in.';
   if(T.type==='TRI') return 'A tri-series: three teams, with the format and order of every match chosen by you.';
+  if(T.type==='ETPL') return 'ETPL matches: 20 overs a side, up to 4 overs per bowler. A league, then 2 semi-finals (1st v 4th, 2nd v 3rd) and the final.';
   if(T.type==='T20WC') return 'T20 matches of 20 overs a side. A group stage, then the knockouts to the final.';
   if(T.type==='CWC') return 'ODI matches of 50 overs a side. Every team plays the others, then the top four play semi-finals and the final.';
   if(T.type==='CT') return 'ODI matches of 50 overs a side. A short league, then semi-finals and the final.';
@@ -1534,7 +1546,7 @@ function autoMode(T){return T.fixtures.some(f=>f.stage);}
 function tourFinished(T){return T.finished===true||(autoMode(T)?T.fixtures.some(f=>f.stage==='final'&&f.done):(T.fixtures.length>0&&T.fixtures.every(f=>f.done)));}
 /* ---- people: up to 8 people play as the teams. Each match is a win for the person who played as the winning team. ---- */
 const PMAX=8;
-const STAGE_NAME={group:'Group stage',qf:'Quarter-finals',sf:'Semi-finals',po:'Qualifier 1 and Eliminator',q2:'Qualifier 2',final:'Final'};
+const STAGE_NAME={group:'Group stage',qf:'Quarter-finals',sf:'Semi-finals',po:'Semi-finals 1 and 2',q2:'Semi-final 3',final:'Final'};
 function peopleMode(T){return (T.people||[]).length>=2;}
 function pName(T,id){const q=(T.people||[]).find(x=>x.id===id);return q?q.name:'';}
 function ownerOf(T,id){return (T.owner||{})[id]||'';}
@@ -1590,13 +1602,13 @@ function nextStage(T){
   const ipl=T.type==='IPL';
   const loserTeam=f=>winnerTeam(f)===f.a?f.b:f.a;
   if(last==='group'){
-    if(ipl&&n>=4){key='po';pairs=[[rk[0],rk[1]],[rk[2],rk[3]]];labels=['Qualifier 1','Eliminator'];}
+    if(ipl&&n>=4){key='po';pairs=[[rk[0],rk[1]],[rk[2],rk[3]]];labels=['Semi-final 1','Semi-final 2'];}
     else if(n>=8&&T.type!=='CWC'&&T.type!=='CT'){key='qf';pairs=[[0,7],[3,4],[1,6],[2,5]].map(q=>[rk[q[0]],rk[q[1]]]);}
     else if(n>=4){key='sf';pairs=[[0,3],[1,2]].map(q=>[rk[q[0]],rk[q[1]]]);}
     else{key='final';pairs=[[rk[0],rk[1]]];}
   }else if(last==='po'){
-    /* IPL playoffs: the loser of Qualifier 1 gets a second chance against the winner of the Eliminator. */
-    key='q2';pairs=[[loserTeam(cur[0]),winnerTeam(cur[1])]];labels=['Qualifier 2'];
+    /* IPL: semi-final 1 is team 1 v team 2, semi-final 2 is team 3 v team 4, semi-final 3 is the loser of semi-final 1 v the winner of semi-final 2, and the final is the winner of semi-final 1 v the winner of semi-final 3. */
+    key='q2';pairs=[[loserTeam(cur[0]),winnerTeam(cur[1])]];labels=['Semi-final 3'];
   }else if(last==='q2'){
     const po=T.fixtures.filter(f=>f.stage==='po').sort((a,b)=>(a.slot||0)-(b.slot||0));
     key='final';pairs=[[winnerTeam(po[0]),winnerTeam(cur[0])]];labels=['Final'];
@@ -1664,6 +1676,24 @@ function tourTable(T){
   return Object.keys(rows).map(k=>rows[k]).sort((a,b)=>b.w-a.w||a.l-b.l||a.name.localeCompare(b.name));
 }
 /* Called when a match ends: files the result against its fixture. */
+const STAGE_SEQ=['group','qf','sf','po','q2','final'];
+/* When every match of a stage is finished, the next stage is made at once from the results so far (the group table decides who plays in the knockouts). */
+function autoAdvance(T){
+  if(!T||isSeries(T)||!autoMode(T)) return;
+  const nx=nextStage(T);
+  if(!nx||nx.wait) return;
+  nx.pairs.forEach((q,i)=>T.fixtures.push(mkFix(T,q[0],q[1],nx.labels[i],nx.key,i)));
+  tlog(T,STAGE_NAME[nx.key]+' made from the results: '+nx.pairs.map(q=>tName(T,q[0])+' v '+tName(T,q[1])).join(', ')+'.');
+}
+/* The final of a tri-series is the top two teams in the table once every match is played. */
+function triFinal(T){
+  if(!T||T.type!=='TRI'||!T.fixtures.length||!T.fixtures.every(f=>f.done)||T.fixtures.some(f=>f.label.indexOf('Final')===0)) return;
+  const std=ctStandings(T),last=T.fixtures[T.fixtures.length-1];
+  if(std.length<2) return;
+  const ov=last.ov==null?null:last.ov;
+  T.fixtures.push({id:newId('f'),a:std[0].id,b:std[1].id,label:'Final · '+ctFmtLabel(last.fmt||'T20',ov),fmt:last.fmt||'T20',ov:ov,done:false,result:null});
+  tlog(T,'Final made from the table: '+std[0].name+' v '+std[1].name);
+}
 function tourRecord(A,out,rec){
   if(!M||!M.tour||!out) return;
   const T=TOURS.find(x=>x.id===M.tour.tid),f=T&&T.fixtures.find(x=>x.id===M.tour.fid);
@@ -1674,6 +1704,7 @@ function tourRecord(A,out,rec){
   const sc=tourScore(T,f);f.result.score=sc;
   tlog(T,'Result: '+tName(T,f.a)+' v '+tName(T,f.b)+' ('+f.label+'): '+out.text+(sc?'. Tournament score: '+sc:''));
   if(f.stage==='final'&&sc) tlog(T,'Tournament finished. Result: '+sc);
+  autoAdvance(T);triFinal(T);
   tourSave(T);
 }
 function tourAbandon(){
@@ -1686,7 +1717,11 @@ function tourAbandon(){
 function tourUndo(){
   if(!M||!M.tour) return;
   const T=TOURS.find(x=>x.id===M.tour.tid),f=T&&T.fixtures.find(x=>x.id===M.tour.fid);
-  if(f&&f.done&&f.result&&f.result.rec===M.recId){f.done=false;f.live=true;f.result=null;tlog(T,'Result removed (last ball undone): '+tName(T,f.a)+' v '+tName(T,f.b));tourSave(T);}
+  if(f&&f.done&&f.result&&f.result.rec===M.recId){f.done=false;f.live=true;f.result=null;tlog(T,'Result removed (last ball undone): '+tName(T,f.a)+' v '+tName(T,f.b));
+    /* A stage or final that was made from that result goes too, if nothing in it has been played. */
+    if(autoMode(T)&&f.stage){const si=STAGE_SEQ.indexOf(f.stage);T.fixtures=T.fixtures.filter(x=>!(x.stage&&STAGE_SEQ.indexOf(x.stage)>si&&!x.done&&!x.live&&!(T.held&&T.held[x.id])));}
+    if(T.type==='TRI') T.fixtures=T.fixtures.filter(x=>!(x.label.indexOf('Final')===0&&!x.done&&!x.live&&!(T.held&&T.held[x.id])));
+    tourSave(T);}
 }
 function fixBanner(){
   const s=ui.setup,i=s.fixture?fixInfo(s.fixture):null;
@@ -1911,7 +1946,7 @@ function tourDetailHtml(T){
       (peopleMode(T)?'<p class="big" style="margin:10px 0 2px">'+(tourFinished(T)&&autoMode(T)?'Result: ':'Score: ')+esc(tourScore(T))+'</p><p class="muted" style="margin:0">'+peopleScore(T).map(x=>esc(x.name)+' '+x.w).join(' &middot; ')+'</p>':'')+
       '<p class="note"><b>'+(tourFinished(T)?'Finished. It is listed under Results in the menu.':'In progress.')+'</b></p>'+
       '<div class="actions">'+(T.finished===true?'<button class="btn small" data-act="tour-reopen">Reopen tournament</button>':(tourFinished(T)?'':'<button class="btn small" data-act="tour-finish">Mark as finished</button>'))+'</div></section>'+tourNextHtml(T)+
-    '<section class="panel"><h3>Teams <em>'+T.teams.length+'</em></h3>'+(teams||'<div class="empty">No teams yet. Press Add teams to choose from your saved teams.</div>')+
+    '<section class="panel"><h3>Teams <em>'+T.teams.length+(TEAM_CAP[T.type]?' of '+TEAM_CAP[T.type]+' at most':'')+'</em></h3>'+(teams||'<div class="empty">No teams yet. Press Add teams to choose from your saved teams.</div>')+
       '<div class="actions" style="padding:10px 14px 14px;margin-top:0"><button class="btn primary" data-act="tm-open" data-v="teams">Add teams</button></div></section>'+peopleHtml(T)+
     '<section class="panel"><h3>Schedule <em>'+done+' of '+T.fixtures.length+' played</em></h3>'+
       (T.fixtures.length?T.fixtures.map((f,i)=>fixRowHtml(T,f,i)).join(''):'<div class="empty">No fixtures yet. Press Add schedule to set who plays whom.</div>')+
@@ -2140,7 +2175,7 @@ function actTour(a,d){
       if(i>=0){
         if(T.fixtures.some(f=>f.a===d.id||f.b===d.id)){toast('Remove that team\'s fixtures first');return false;}
         tlog(T,'Team removed: '+T.teams[i].name);T.teams.splice(i,1);
-      }else{if(isSeries(T)&&T.teams.length>=(T.type==='TRI'?3:2)){toast((T.type==='TRI'?'A tri-series has 3 teams':'A tour has 2 teams')+'. Remove one first.');return false;}const lt=LIB.teams.find(x=>x.id===d.id);if(lt){T.teams.push({id:lt.id,name:lt.name});tlog(T,'Team added: '+lt.name);}}
+      }else{if(TEAM_CAP[T.type]&&T.teams.length>=TEAM_CAP[T.type]){toast('An '+TT[T.type].replace(' Tournament','')+' tournament has '+TEAM_CAP[T.type]+' teams at most. Remove one first.');return false;}if(isSeries(T)&&T.teams.length>=(T.type==='TRI'?3:2)){toast((T.type==='TRI'?'A tri-series has 3 teams':'A tour has 2 teams')+'. Remove one first.');return false;}const lt=LIB.teams.find(x=>x.id===d.id);if(lt){T.teams.push({id:lt.id,name:lt.name});tlog(T,'Team added: '+lt.name);}}
       tourSave(T);
       const l=$('tmlist');if(l&&ui.tm) l.innerHTML=tmTeamsListHtml(T);
       return false;}
@@ -2276,7 +2311,7 @@ function tossHtml(){
   }
   return '<section class="panel pad" style="margin-top:12px"><h3 class="stephead"><b>3</b> Toss</h3><div class="opts">'+mode+'</div>'+body+'</section>';
 }
-function defaultMaxPer(fmt,overs){if(fmt==='Test') return null;if(fmt==='T20'||fmt==='IPL') return 4;if(fmt==='ODI') return 10;return Math.max(1,Math.ceil((parseInt(overs,10)||20)/5));}
+function defaultMaxPer(fmt,overs){if(fmt==='Test') return null;if(fmt==='T20'||fmt==='IPL'||fmt==='ETPL') return 4;if(fmt==='ODI') return 10;return Math.max(1,Math.ceil((parseInt(overs,10)||20)/5));}
 function renderSetup(){
   const s=ui.setup;
   if(ui.screen==='squads') return squadsHtml();
@@ -2288,12 +2323,12 @@ function renderSetup(){
   fixBanner()+'<section class="panel pad"><h1>New match</h1><p class="muted" style="margin-top:0">Set the overs, pick each squad from your saved players and put them in batting order, then do the toss. Anyone missing can be added on the spot and is saved for next time.</p>'+
     storeNote()+
     '<h3 class="stephead" style="margin-top:14px"><b>1</b> Match format</h3>'+
-    '<div class="opts" style="margin-top:4px">'+[['T20','T20'],['IPL','IPL'],['ODI','ODI'],['Test','Test'],['Custom','Custom overs']].map(x=>'<button class="opt" data-act="format" data-v="'+x[0]+'" aria-pressed="'+(s.fmt===x[0])+'">'+x[1]+'</button>').join('')+'</div>'+
+    '<div class="opts" style="margin-top:4px">'+[['T20','T20'],['IPL','IPL'],['ETPL','ETPL'],['ODI','ODI'],['Test','Test'],['Custom','Custom overs']].map(x=>'<button class="opt" data-act="format" data-v="'+x[0]+'" aria-pressed="'+(s.fmt===x[0])+'">'+x[1]+'</button>').join('')+'</div>'+
     '<div class="grid2">'+
       '<label class="field" style="margin-top:10px"><span>Overs per innings</span><input id="overs" type="number" inputmode="numeric" min="1" max="90" data-s="overs" value="'+(test?'':esc(s.overs))+'"'+(test?' disabled placeholder="No limit"':(s.fmt==='Custom'?' placeholder="Enter overs"':''))+(s.fixture&&!test?' disabled':'')+'></label>'+
       '<label class="field" style="margin-top:10px"><span>Max overs per bowler</span><input id="maxper" type="number" inputmode="numeric" min="1" max="90" data-s="maxper" value="'+(test?'':esc(s.maxper))+'" placeholder="'+(test?'No limit':(s.fmt==='Custom'&&!(parseInt(s.overs,10)>0)?'A fifth of the overs':'Default: '+dm))+'"'+(test?' disabled':'')+'></label>'+
     '</div>'+
-    '<p class="note">'+(test?'Test match: four innings, no over limit. Each innings ends when the batting side is all out or declares, and bowlers can bowl as many overs as needed.':s.fmt==='IPL'?'IPL: 20 overs an innings, up to 4 overs per bowler, and one impact player per team who can replace a teammate during the match.':s.fmt==='T20'?'T20: 20 overs an innings, up to 4 overs per bowler.':s.fmt==='ODI'?'ODI: 50 overs an innings, up to 10 overs per bowler.':'Type any number of overs. The default limit is a fifth of the innings, rounded up.')+'</p>'+
+    '<p class="note">'+(test?'Test match: four innings, no over limit. Each innings ends when the batting side is all out or declares, and bowlers can bowl as many overs as needed.':s.fmt==='IPL'?'IPL: 20 overs an innings, up to 4 overs per bowler, and one impact player per team who can replace a teammate during the match.':s.fmt==='ETPL'?'ETPL: a T20 match. 20 overs an innings, up to 4 overs per bowler.':s.fmt==='T20'?'T20: 20 overs an innings, up to 4 overs per bowler.':s.fmt==='ODI'?'ODI: 50 overs an innings, up to 10 overs per bowler.':'Type any number of overs. The default limit is a fifth of the innings, rounded up.')+'</p>'+
     '<h3 class="stephead" style="margin-top:18px"><b>2</b> Teams and players</h3><p class="note" style="margin-top:0">Choose a saved team or type a name, then pick up to 16 players for each side.</p>'+
   '</section>'+
   '<div class="pickers">'+teamCard(0)+teamCard(1)+'</div>'+
@@ -2399,15 +2434,17 @@ function squadsHtml(){
     return '<div class="rowline"><input id="rn-'+esc(p.id)+'" data-f="rename" data-id="'+esc(p.id)+'" value="'+esc(p.name)+'" maxlength="40" aria-label="Player name" autocomplete="off">'+
       '<button class="btn small'+(armed?' armed':' danger')+'" data-act="'+(armed?'del-player':'del-player-arm')+'" data-id="'+esc(p.id)+'">'+(armed?'Confirm':'Remove')+'</button></div>';
   }).join('');
-  const teams=LIB.teams.map(t=>{
+  const teamCard=t=>{
     const armed=ui.armed==='dt'+t.id;
     const names=t.playerIds.map(libName).filter(Boolean);
     const open=!!(ui.tOpen||{})[t.id];
     return '<div class="tcard"><div class="rowline" style="padding:0;border:0"><span class="name" style="flex:1;min-width:0">'+esc(t.name)+' <span class="count">'+plural(names.length,'player')+'</span></span>'+
       '<button class="btn small chev" data-act="team-toggle" data-id="'+esc(t.id)+'" aria-expanded="'+open+'" aria-label="'+(open?'Hide':'Show')+' players in '+esc(t.name)+'"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" style="transition:transform .15s;transform:rotate('+(open?'180':'0')+'deg)"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>'+(open?'<div class="note">'+(names.length?names.map(esc).join(', '):'No players')+'</div>':'')+
-      '<div class="actions"><button class="btn small" data-act="edit-team" data-id="'+esc(t.id)+'">Edit</button>'+
+      '<div class="actions"><button class="btn small" data-act="edit-team" data-id="'+esc(t.id)+'">Edit</button>'+catSel(t)+
       '<button class="btn small'+(armed?' armed':' danger')+'" data-act="'+(armed?'del-team':'del-team-arm')+'" data-id="'+esc(t.id)+'">'+(armed?'Confirm remove':'Remove')+'</button></div></div>';
-  }).join('');
+  };
+  const catSel=t=>'<select data-f="team-cat" data-id="'+esc(t.id)+'" aria-label="Category of '+esc(t.name)+'" style="width:auto;min-height:34px">'+TEAM_CATS.map(c=>'<option value="'+c+'"'+(catOf(t)===c?' selected':'')+'>'+c+'</option>').join('')+'</select>';
+  const teams=TEAM_CATS.map(c=>{const l=LIB.teams.filter(t=>catOf(t)===c);return l.length?'<h3 class="stephead" style="margin:14px 2px 6px">'+c+' <em>'+l.length+'</em></h3>'+l.map(teamCard).join(''):'';}).join('');
   const ed=ui.squads.editor;
   return '<div class="wrap">'+topNav()+'<div class="actions" style="margin-top:12px"><button class="btn primary" data-act="view-teams">View teams</button></div><section class="panel" id="bulkremove"><h3>Remove all</h3>'+removeAllHtml('p')+removeAllHtml('t')+'</section><div class="cols"><div>'+findPlayerHtml()+
     '<section class="panel"><h3>Players <em>'+LIB.players.length+' saved</em></h3>'+
@@ -2471,7 +2508,7 @@ function actLib(a,d){
     case 'screen':releaseHold();ui.screen=d.v;ui.top=true;return true;
     case 'ct-type':case 'ct-newteam':case 'ct-dd':case 'ct-brick':case 'ct-blkmove':case 'ct-blkadd':case 'ct-blkdel':case 'ct-newfmt':case 'ct-create':case 'ct-open':case 'ct-back':case 'ct-fmt':case 'ct-add':case 'ct-final':case 'tp-add':case 'tp-team':case 'tp-del':case 'tp-view':case 'auto-group':case 'auto-next':case 'tour-type':case 'tour-create':case 'tour-open':case 'tour-continue':case 'tour-finish':case 'tour-reopen':case 'tour-back':case 'tour-del-arm':case 'tour-del':case 'tm-open':case 'tm-close':case 'tm-team-toggle':case 'tm-team-remove':case 'sched-rounds':case 'sched-gen':case 'sched-add':case 'fix-play':case 'fix-unlink':case 'fix-move':case 'fix-del':case 'fix-clear-arm':case 'fix-clear':return actTour(a,d)===true;
     case 'preset':ui.setup.overs=String(d.v);ui.setup.fmt=d.v==='20'?'T20':d.v==='50'?'ODI':'Custom';return true;
-    case 'format':{const s=ui.setup;if(s.fixture) return false;s.fmt=d.v;s.maxper='';if(d.v==='T20'||d.v==='IPL') s.overs='20';else if(d.v==='ODI') s.overs='50';else if(d.v==='Custom') s.overs='';return true;}
+    case 'format':{const s=ui.setup;if(s.fixture) return false;s.fmt=d.v;s.maxper='';if(d.v==='T20'||d.v==='IPL'||d.v==='ETPL') s.overs='20';else if(d.v==='ODI') s.overs='50';else if(d.v==='Custom') s.overs='';return true;}
     case 'resume-pending':{
       if(!PENDING) return true;
       if(heldState(PENDING)==='busy'){toast('This match is being scored on another device.');return true;}
@@ -2484,7 +2521,7 @@ function actLib(a,d){
     case 'add-player':addPlayerTo(d.k);return true;
     case 'team-toggle':ui.tOpen=ui.tOpen||{};ui.tOpen[d.id]=!ui.tOpen[d.id];return true;
     case 'pick-open':ui.pickK=d.k;ui.pickQ='';return true;
-    case 'team-open':ui.teamK=d.k;ui.teamQ='';return true;
+    case 'team-open':ui.teamK=d.k;ui.teamQ='';ui.teamCat='';return true;
     case 'team-close':ui.teamK=null;return true;
     case 'team-add':pickTeam(d.k,d.id);ui.teamK=null;return true;
     case 'pick-close':ui.pickK=null;return true;
@@ -2499,8 +2536,10 @@ function actLib(a,d){
       return false;}
     case 'save-team':saveTeam(d.k,false);releaseHold();return true;
     case 'view-teams':ui.scrollId='savedteams';return true;
+    case 'ed-cat':{const e=ui.squads.editor;e.cat=d.v;if(e.teamId){libSetCat(e.teamId,d.v);}return true;}
+    case 'team-cat':ui.teamCat=ui.teamCat===d.v?'':d.v;return true;
     case 'clear-editor':releaseHold();ui.squads.editor={teamId:'',name:'',sel:[],newp:''};ui.focus='tn-e';ui.scrollId='teameditor';return true;
-    case 'edit-team':{const t=LIB.teams.find(x=>x.id===d.id);if(t){ui.squads.editor={teamId:t.id,name:t.name,sel:t.playerIds.filter(i=>libName(i)!=null),newp:'',cap:t.capId||'',wk:t.wkId||''};ui.focus='tn-e';ui.scrollId='teameditor';}return true;}
+    case 'edit-team':{const t=LIB.teams.find(x=>x.id===d.id);if(t){ui.squads.editor={teamId:t.id,name:t.name,sel:t.playerIds.filter(i=>libName(i)!=null),newp:'',cap:t.capId||'',wk:t.wkId||'',cat:catOf(t)};ui.focus='tn-e';ui.scrollId='teameditor';}return true;}
     case 'del-all-players-arm':ui.armed='allp';return true;
     case 'del-all-teams-arm':ui.armed='allt';return true;
     case 'del-all-cancel':ui.armed=null;return true;
@@ -2574,7 +2613,7 @@ function boardHtml(A,ci){
   }
   return '<section class="board"><div class="row1"><span class="team">'+esc(t.name)+'</span><span>'+innName(ci)+(inn.so?'':' innings')+' &middot; '+(M.overs?ovLimit(M,inn)+' ov':'Test')+'</span></div>'+
     '<div class="score"><span class="r">'+S.runs+'</span><span class="sl">/</span><span class="w">'+S.wkts+'</span></div>'+
-    '<div class="stats"><span>Overs <b>'+fmtOvers(S.balls)+'</b></span><span>Run rate <b>'+rr.toFixed(2)+'</b></span>'+(M.overs&&!inn.so&&(M.format==='T20'||M.format==='IPL')&&S.balls<36&&!S.done?'<span class="pp">Powerplay <b>overs 1-6</b></span>':'')+
+    '<div class="stats"><span>Overs <b>'+fmtOvers(S.balls)+'</b></span><span>Run rate <b>'+rr.toFixed(2)+'</b></span>'+(M.overs&&!inn.so&&(M.format==='T20'||M.format==='IPL'||M.format==='ETPL')&&S.balls<36&&!S.done?'<span class="pp">Powerplay <b>overs 1-6</b></span>':'')+
     '<span>Extras <b>'+(S.extras.wd+S.extras.nb+S.extras.b+S.extras.lb)+'</b></span></div>'+extra+'</section>';
 }
 
@@ -3105,8 +3144,9 @@ document.addEventListener('input',e=>{
 document.addEventListener('change',e=>{
   const t=e.target,d=t.dataset||{};
   if(!M){
-    if(d.s){ui.setup[d.s]=t.value;if(d.s==='overs'){const f=ui.setup.fmt;if(f!=='Custom'){ui.setup.fmt=((f==='IPL'||f==='T20')&&t.value==='20')?f:t.value==='20'?'T20':t.value==='50'?'ODI':'Custom';}render();}return;}
+    if(d.s){ui.setup[d.s]=t.value;if(d.s==='overs'){const f=ui.setup.fmt;if(f!=='Custom'){ui.setup.fmt=((f==='IPL'||f==='ETPL'||f==='T20')&&t.value==='20')?f:t.value==='20'?'T20':t.value==='50'?'ODI':'Custom';}render();}return;}
     if(d.f==='ps-team'){if(ui.ps) ui.ps.teamId=t.value;render();return;}
+    if(d.f==='team-cat'){libSetCat(d.id,t.value);toast('Moved to '+t.value);render();return;}
     if(d.f==='name'&&d.k==='e'){autoSaveEditor();return;}
     if(d.f==='ctname'){ui.ctnew.name=t.value;return;}
     if(d.f==='ctnov'){const b=ui.ctnew.blocks[+t.dataset.i];if(b) b.ov=t.value;return;}

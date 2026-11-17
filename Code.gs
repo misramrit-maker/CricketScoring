@@ -5,7 +5,7 @@
  * script and the script rewrites one tab per kind of data:
  *
  *   Players        every saved player and the teams they are in
- *   Teams          saved teams with their players, captain and wicketkeeper
+ *   Teams          saved teams with their players, captain, wicketkeeper and category (International, IPL, ETPL or Custom)
  *   Matches        every finished match: date, teams, toss, scores, result,
  *                  category (Tournament match / Regular match) and tournament
  *   Innings        one row per innings (the match in progress is included): total, wickets, overs, extras, fall of wickets
@@ -69,7 +69,7 @@ var MAX_CELL = 45000; // Google Sheets allows 50,000 characters in a cell.
 /* The column headings of every tab, so they are always written even when a tab has no rows yet. */
 var HEADINGS = {
   "Players": ["Id", "Name", "Teams"],
-  "Teams": ["Id", "Team", "Players", "Captain", "Wicketkeeper", "Player ids"],
+  "Teams": ["Id", "Team", "Players", "Captain", "Wicketkeeper", "Player ids", "Category"],
   "Matches": ["Match ID", "Date", "Team A", "Team B", "Format", "Overs", "Toss", "Scores", "Result", "Category", "Tournament", "Toss called by", "Call", "Bat flip landed", "Toss won by", "Chose to"],
   "Innings": ["Match ID", "Date", "Match", "Innings", "Batting team", "Runs", "Wickets", "Overs", "Extras", "Fall of wickets"],
   "Batting": ["Match ID", "Date", "Match", "Innings", "Team", "Batter", "How out", "Runs", "Balls", "4s", "6s", "Strike rate"],
@@ -226,12 +226,20 @@ function rowsNorm_(ss, name, width) {
     return o;
   });
 }
-function sheetLibRows_(ss) { return { Players: rowsNorm_(ss, 'Players', 3), Teams: rowsNorm_(ss, 'Teams', 6), Matches: rowsNorm_(ss, 'Matches', 16) }; }
+function sheetLibRows_(ss) { return { Players: rowsNorm_(ss, 'Players', 3), Teams: rowsNorm_(ss, 'Teams', 7), Matches: rowsNorm_(ss, 'Matches', 16) }; }
 /* Remembers what the two tabs looked like right after the app last wrote them, so a later difference can only be a change made by hand in the sheet. */
 function snapshotBase_(ss, cur) {
   cur = cur || sheetLibRows_(ss);
   writeTab_(ss, 'Sync base', HEADINGS['Sync base'], chunkRows_(JSON.stringify(cur)));
   PropertiesService.getScriptProperties().setProperty('baseHash', hash_(canon_(cur)));
+}
+/* A team's category is one of International, IPL, ETPL or Custom. Anything else counts as Custom. */
+function catOf_(v) {
+  var s = String(v || '');
+  if (/^intern/i.test(s)) return 'International';
+  if (/^etpl/i.test(s)) return 'ETPL';
+  if (/^ipl/i.test(s)) return 'IPL';
+  return 'Custom';
 }
 /* The Players and Teams tabs exactly as the app builds them. */
 function libRows_(state) {
@@ -243,7 +251,7 @@ function libRows_(state) {
     }),
     teams: s.lib.teams.map(function (t) {
       var ids = (t.playerIds || []).filter(function (i) { return nmOf[i] !== undefined; });
-      return [t.id, t.name, ids.map(function (i) { return nmOf[i]; }).join(', '), nmOf[t.capId] || '', nmOf[t.wkId] || '', ids.join(',')];
+      return [t.id, t.name, ids.map(function (i) { return nmOf[i]; }).join(', '), nmOf[t.capId] || '', nmOf[t.wkId] || '', ids.join(','), catOf_(t.cat)];
     })
   };
 }
@@ -341,14 +349,16 @@ function absorbDiff_(stored, base, cur, now) {
     if (!name) return;
     if (id && tById[id]) {
       var b = baseT[id];
-      if (b && (b[1] !== name || b[2] !== r[2] || b[3] !== r[3] || b[4] !== r[4])) {
+      var catChanged = b && b.length > 6 && b[6] !== r[6] && catOf_(r[6]) !== catOf_(tById[id].cat);
+      if (b && (b[1] !== name || b[2] !== r[2] || b[3] !== r[3] || b[4] !== r[4] || catChanged)) {
         var t = tById[id], ids = idsOf(r[2]), cp = look(r[3]), wp = look(r[4]);
         t.name = name; t.playerIds = ids; t.capId = ids.indexOf(cp) >= 0 ? cp : ''; t.wkId = ids.indexOf(wp) >= 0 ? wp : ''; t.u = now;
+        if (catChanged) t.cat = catOf_(r[6]);
         reindex(); changed = true;
       }
     } else if (!tByName[nameKey_(name)] && !(id && del['t:' + id])) {
       var ids2 = idsOf(r[2]), cp2 = look(r[3]), wp2 = look(r[4]);
-      teams.push({ id: id || newId_('t'), name: name, playerIds: ids2, capId: ids2.indexOf(cp2) >= 0 ? cp2 : '', wkId: ids2.indexOf(wp2) >= 0 ? wp2 : '', u: now });
+      teams.push({ id: id || newId_('t'), name: name, playerIds: ids2, capId: ids2.indexOf(cp2) >= 0 ? cp2 : '', wkId: ids2.indexOf(wp2) >= 0 ? wp2 : '', cat: catOf_(r[6]), u: now });
       reindex(); changed = true;
     }
   });
@@ -373,11 +383,12 @@ function absorbDiff_(stored, base, cur, now) {
   };
 }
 /* ---- Tournaments: rebuilt from the Tournaments, Tournament teams, People, Fixtures and Activity tabs when the app does not have them ---- */
-var STAGE_KEY_ = { 'Group stage': 'group', 'Quarter-finals': 'qf', 'Semi-finals': 'sf', 'Qualifier 1 and Eliminator': 'po', 'Qualifier 2': 'q2', 'Final': 'final' };
+var STAGE_KEY_ = { 'Group stage': 'group', 'Quarter-finals': 'qf', 'Semi-finals': 'sf', 'Qualifier 1 and Eliminator': 'po', 'Qualifier 2': 'q2', 'Semi-finals 1 and 2': 'po', 'Semi-final 3': 'q2', 'Final': 'final' };
 function tourTypeOf_(label) {
   var s = String(label || '');
   if (/^Tri-series$/i.test(s)) return 'TRI';
   if (/^Tour$/i.test(s)) return 'TOUR';
+  if (/ETPL/i.test(s)) return 'ETPL';
   if (/IPL/i.test(s)) return 'IPL';
   if (/T20 World Championship/i.test(s)) return 'T20WC';
   if (/Cricket World Cup/i.test(s)) return 'CWC';
@@ -812,7 +823,7 @@ function pad_(row, width) {
   return r;
 }
 
-var CODE_VERSION = '2026-11-17c';
+var CODE_VERSION = '2026-11-17f';
 function out_(obj) {
   if (obj && typeof obj === 'object') obj.v = CODE_VERSION;
   return ContentService
