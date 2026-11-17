@@ -486,7 +486,7 @@ let DB=null,pendingOps=[],chain=Promise.resolve();
 function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'base'});}
 const HISTKEY='cricketscorer.hist.v1',SYNCKEY='cricketscorer.sync.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
-const SYNC_URL='https://script.google.com/macros/s/AKfycbx8_Y7Ip9CKa3HkHJTjJOd0609b8VMTjWCFENeGTr2i6X2tDUitiuhZETRZpjStdfB3ww/exec';
+const SYNC_URL='';
 /* The address is taken from the line above (spaces and quotes are ignored). If that line is empty, the first Google Apps Script web app address found anywhere in this file is used, so it still works if it was pasted a line too high or low. */
 const SYNC_ADDR=(function(){
   let u=String(SYNC_URL||'').replace(/^[\s'"]+|[\s'"]+$/g,'');
@@ -2232,7 +2232,7 @@ function noSyncHtml(){
 }
 function topNav(){
   const t=[['setup','New match'],['squads','Players & teams'],['tours','Tournaments'],['ctours','Tours']].map(x=>'<button class="tab" role="tab" aria-selected="'+(ui.screen===x[0])+'" data-act="screen" data-v="'+x[0]+'">'+esc(x[1])+'</button>').join('');
-  return '<div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div><div class="tabs four" role="tablist">'+t+'</div>'+noSyncHtml()+syncWarnHtml()+pendingHtml();
+  return '<div class="top"><div class="brandcol"><div class="brand">'+logo()+'CricketScorer</div><span class="dev">Developed by Arjun</span></div><div class="topr">'+syncIndHtml()+menuHtml()+'</div></div><div class="tabs four" role="tablist">'+t+'</div>'+noSyncHtml()+syncWarnHtml()+(ui.screen==='setup'?pendingHtml():'');
 }
 function storeNote(){
   return '<p class="note">'+(LIB.mode==='db'?'Players, teams and the live match are shared with every device that opens this page, and kept between sessions.':LIB.mode==='loading'?'Connecting to your saved players...':(SYNC.url?'Players and teams are saved in this browser and shared through the spreadsheet.':'Players and teams are saved in this browser only.'))+'</p>';
