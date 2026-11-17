@@ -927,7 +927,6 @@ function importLib(){
 }
 /* Everything entered on one device shows on every device that uses the same Sync URL. */
 function applyState(st){
-  const first=!STATEAT;
   let lostMatch=false;
   const beforeAll=canon(coreObj());
   APPLYING=true;
@@ -951,7 +950,6 @@ function applyState(st){
     /* The match being scored is one shared record: the newest change wins. */
     const rAt=String(st.liveAt!==undefined?st.liveAt:(st.at||''));
     if(rAt>LIVEAT){
-      const had=!!M;
       const L=st.live&&st.live.v===1&&st.live.innings&&st.live.teams?st.live:null;
       if(M){
         /* This device is the scorer. It gives up only if another device claimed the same match later. */
