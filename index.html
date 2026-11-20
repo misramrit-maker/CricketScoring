@@ -75,10 +75,9 @@ button{touch-action:manipulation}
 .dev{font-size:12px;font-weight:500;color:var(--muted);font-family:var(--font-body);letter-spacing:0;white-space:nowrap}
 .brandcol{display:flex;align-items:baseline;gap:10px;min-width:0;flex-wrap:wrap}
 .syncind{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;white-space:nowrap}
-.syncind.syncing{color:#B88700}
+.syncind.syncing{color:#E3A800}
 .syncind.done{color:#1E8E34}
-.syncind.fail{color:var(--wicket)}
-.syncind.idle{color:var(--muted);font-weight:500}
+.syncind.fail{color:#D32F2F}
 .syncind .spin{width:14px;height:14px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:spin .8s linear infinite;flex:none}
 .syncind.done .spin{animation:none;border-right-color:currentColor}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -851,7 +850,7 @@ function buildSync(){
 }
 function syncIndHtml(){
   const st=SYNC.state;
-  if(!SYNC.url) return '<span id="syncind" class="syncind idle" role="status" data-act="sync-dlg" style="cursor:pointer" title="No Sync URL was found in this copy of the app. Tap to see why.">Not syncing</span>';
+  if(!SYNC.url) return '<span id="syncind" class="syncind fail" role="status" data-act="sync-dlg" style="cursor:pointer" title="Nothing can be sent to the Google Sheet because no Sync URL was found in this copy of the app. Tap to see why.">Sync failed</span>';
   const txt=st==='syncing'?'Syncing to Sheets':st==='done'?'Synced to Sheets':st==='fail'?'Sync failed':'';
   return '<span id="syncind" class="syncind '+(txt?st:'')+'" role="status" aria-live="polite">'+(txt?(st==='fail'?'':'<span class="spin" aria-hidden="true"></span>')+txt:'')+'</span>';
 }
@@ -2267,7 +2266,7 @@ function actTour(a,d){
 function noSyncHtml(){return '';}
 function syncDlgHtml(){
   const raw=String(SYNC_URL||'').replace(/\s+/g,' ').trim();
-  return '<div class="scrim" data-act="sync-dlg-bg"><div class="sheet" role="dialog" aria-modal="true" aria-label="Sync URL"><h2>No Sync URL found</h2>'+
+  return '<div class="scrim" data-act="sync-dlg-bg"><div class="sheet" role="dialog" aria-modal="true" aria-label="Sync URL"><h2>Sync failed: no Sync URL found</h2>'+
     '<p class="muted" style="margin:0">This copy of the app (version '+esc(BUILD)+') did not find a Sync URL, so it cannot send to or read from your Google Sheet. The Syncing and Synced animations appear as soon as it has one.</p>'+
     '<p class="note">The line <b>const SYNC_URL=\'\';</b> in this copy of index.html holds: <b>'+(raw?esc(raw):'nothing (it is empty)')+'</b>. Put your address (the one ending in /exec) between the two quotes, save, upload the file to GitHub, then hard-refresh this page. Until then you can paste it here to try it on this device.</p>'+
     '<label class="field"><span>Sync URL</span><input id="syncurl3" type="url" inputmode="url" autocomplete="off" placeholder="Paste your Sync URL here" data-f="sync"></label>'+
