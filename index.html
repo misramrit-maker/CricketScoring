@@ -487,7 +487,7 @@ let DB=null,pendingOps=[],chain=Promise.resolve();
 function byName(a,b){return a.name.localeCompare(b.name,undefined,{sensitivity:'base'});}
 const HISTKEY='cricketscorer.hist.v1',SYNCKEY='cricketscorer.sync.v1';
 /* ===== PASTE YOUR SYNC_URL HERE (the Google Apps Script web app URL ending in /exec) ===== */
-const SYNC_URL='';
+const SYNC_URL='https://script.google.com/macros/s/AKfycbyaehYjeThy2Tr5o_1kijingFwj_w6gzNBaGWe-7lJh8dg08RxkWzchrU_V06ZAgZkarw/exec';
 /* The address is taken from the line above (spaces and quotes are ignored). If that line is empty, the first Google Apps Script web app address found anywhere in this file is used, so it still works if it was pasted a line too high or low. */
 const SYNC_ADDR=(function(){
   let u=String(SYNC_URL||'').replace(/^[\s'"]+|[\s'"]+$/g,'');
@@ -906,7 +906,7 @@ function mergeSheetLib(d){
     if(!t){
       if(r[0]&&DEL['t:'+String(r[0])]) return;
       const id=r[0]&&!LIB.teams.some(x=>x.id===String(r[0]))?String(r[0]):newId('t');
-      libPutTeam(id,name,ids.slice(0,65),cap,wk);n++;
+      libPutTeam(id,name,ids.slice(0,65),cap,wk,r[6]?String(r[6]):undefined);n++;
     }else{
       const add=ids.filter(i=>t.playerIds.indexOf(i)<0);
       if(add.length){libPutTeam(t.id,t.name,t.playerIds.concat(add).slice(0,65),t.capId||cap,t.wkId||wk);n++;}
